@@ -55,7 +55,15 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-ui); font-si
 h1,h2,h3{font-family:var(--font-display); font-weight:600; margin:0; text-wrap:balance}
 .tnum{font-variant-numeric:tabular-nums}
 
-.appbar{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:14px; padding:14px max(16px,env(safe-area-inset-left,0px)) 14px max(16px,env(safe-area-inset-right,0px)); background:var(--surface); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(27,36,48,.04), 0 6px 16px -12px rgba(27,36,48,.3)}
+.appbar{position:sticky; top:0; z-index:30; background:var(--surface); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(27,36,48,.04), 0 6px 16px -12px rgba(27,36,48,.3)}
+.appbar-row{display:flex; align-items:center; gap:14px; padding:14px max(16px,env(safe-area-inset-left,0px)) 14px max(16px,env(safe-area-inset-right,0px))}
+.samplebar{display:flex; align-items:center; gap:10px; padding:9px max(16px,env(safe-area-inset-left,0px)); background:var(--warn); color:#fff; font-size:13px; font-weight:600; border-top:1px solid rgba(0,0,0,.08)}
+.samplebar .sdot{width:8px; height:8px; border-radius:50%; background:#fff; flex:none; animation:spulse 1.6s ease-in-out infinite}
+@keyframes spulse{0%,100%{opacity:1}50%{opacity:.35}}
+.samplebar b{font-weight:800}
+.samplebar .sfill{flex:1; min-width:0; font-weight:600}
+.samplebar .sclear{font-family:var(--font-ui); font-size:12.5px; font-weight:700; color:var(--warn); background:#fff; border:none; border-radius:7px; padding:6px 12px; cursor:pointer; white-space:nowrap}
+.samplebar .sclear:hover{background:rgba(255,255,255,.88)}
 .brand{display:flex; flex-direction:column; gap:1px; margin-right:auto; min-width:0}
 .brand h1{font-size:25px; letter-spacing:-.015em; line-height:1.1}
 .brand .sub{font-size:11.5px; color:var(--muted); letter-spacing:.02em}
@@ -228,6 +236,7 @@ button{font-family:var(--font-ui); cursor:pointer}
 <body>
 
 <header class="appbar">
+  <div class="appbar-row">
   <div class="brand">
     <h1>Course Workload Estimator</h1>
     <span class="sub">A guided estimate of student workload and credit-hour equivalent</span>
@@ -242,6 +251,14 @@ button{font-family:var(--font-ui); cursor:pointer}
     <button type="button" class="themebtn" id="themeBtn" aria-label="Color theme"></button>
   </div>
   <input type="file" id="fileInput" accept=".xlsx" hidden>
+  </div>
+  <!-- TEST DATA — remove this banner with the sample-data feature -->
+  <div class="samplebar" id="sampleBanner" hidden>
+    <span class="sdot"></span>
+    <span class="sfill"><b>Sample data loaded.</b> This is example content for preview only — clear the form before entering data for a real course.</span>
+    <button type="button" class="sclear" id="sampleClear">Clear form</button>
+  </div>
+  <!-- /TEST DATA -->
 </header>
 <div class="toast" id="toast" hidden></div>
 <div id="tip" hidden><button class="tipclose" type="button" aria-label="Close">×</button><div class="tipbody"></div></div>
@@ -777,7 +794,7 @@ function normalizeCourseId(raw){
   return m ? `${m[1]} ${m[2]}` : String(raw||'').toUpperCase().replace(/\s+/g,' ').trim();
 }
 function isValidCourseId(id){ return /^[A-Z]+ \d+[A-Z]*$/.test(id); }
-function restart(){ state.course={id:'',credits:null,date:todayISO,by:''}; state.modules=null; state.inputs={}; state.gates={}; modulesAck=false; cur=0; render(); window.scrollTo(0,0); }
+function restart(){ state.course={id:'',credits:null,date:todayISO,by:''}; state.modules=null; state.inputs={}; state.gates={}; modulesAck=false; cur=0; render(); window.scrollTo(0,0); const sb=document.getElementById('sampleBanner'); if(sb) sb.hidden=true; }
 
 /* ============================================================
    SAVE / OPEN  (Excel .xlsx carrier — editable inputs, locked
@@ -968,7 +985,7 @@ async function restoreFromFile(file){
     GROUPS.forEach(g=>g.items.forEach(it=>{ if(it.gate){ const v=parseFloat(state.inputs[it.id]); const pv=it.pre?parseFloat(state.inputs[it.pre.id]):NaN; if(v>0||pv>0) state.gates[it.id]=true; } }));
     state.course.id=normalizeCourseId(state.course.id);
     modulesAck = state.modules>10;
-    cur=0; render(); window.scrollTo(0,0); toast('Loaded '+file.name);
+    cur=0; render(); window.scrollTo(0,0); { const sb=document.getElementById('sampleBanner'); if(sb) sb.hidden=true; } toast('Loaded '+file.name);
   }catch(e){ toast('Could not open file: '+e.message,true); }
 }
 
@@ -1002,6 +1019,7 @@ function applyTheme(choice){
 
 /* wire persistent controls */
 document.getElementById('restartBtn').onclick=restart;
+{ const sc=document.getElementById('sampleClear'); if(sc) sc.onclick=restart; }
 document.getElementById('saveBtn').onclick=downloadFile;
 document.getElementById('openBtn').onclick=()=>document.getElementById('fileInput').click();
 document.getElementById('fileInput').onchange=e=>{ const f=e.target.files[0]; if(f) restoreFromFile(f); e.target.value=''; };
@@ -1023,7 +1041,9 @@ function loadTestData(){
   };
   state.gates={};
   GROUPS.forEach(g=>g.items.forEach(it=>{ if(it.gate) state.gates[it.id]=true; }));
-  cur=0; render(); window.scrollTo(0,0); toast('Test data loaded — a sample 10-module course');
+  cur=0; render(); window.scrollTo(0,0);
+  { const sb=document.getElementById('sampleBanner'); if(sb) sb.hidden=false; }
+  toast('Sample data loaded — a sample 10-module course');
 }
 { const b=document.getElementById('testBtn'); if(b) b.onclick=loadTestData; }
 /* ===== /TEST DATA ===== */
