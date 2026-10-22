@@ -21,6 +21,7 @@
   --ooc:#6a4a86; --ooc-soft:#efe8f5;
   --good:#2e7d5b; --good-soft:#e3f1ea;
   --warn:#9c6a14; --warn-soft:#f6ecd7;
+  --bad:#b4432f; --bad-soft:#f6e3de;
   --radius:12px; --shadow:0 1px 2px rgba(27,36,48,.06),0 10px 28px rgba(27,36,48,.07);
   --font-display:'Spectral',Georgia,'Times New Roman',serif;
   --font-ui:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -35,6 +36,7 @@
   --ooc:#b291d4; --ooc-soft:#282036;
   --good:#5bb98c; --good-soft:#182a22;
   --warn:#d6a24a; --warn-soft:#2c2417;
+  --bad:#dd7a66; --bad-soft:#301d18;
   color-scheme:dark;
 }}
 :root[data-theme="dark"]{
@@ -46,6 +48,7 @@
   --ooc:#b291d4; --ooc-soft:#282036;
   --good:#5bb98c; --good-soft:#182a22;
   --warn:#d6a24a; --warn-soft:#2c2417;
+  --bad:#dd7a66; --bad-soft:#301d18;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -76,12 +79,22 @@ button{font-family:var(--font-ui); cursor:pointer}
 .btn.ghost{background:transparent; border-color:transparent; color:var(--muted); padding:9px 12px}
 .btn.ghost:hover{background:var(--surface-2); color:var(--ink)}
 
-.wrap{max-width:1060px; margin:0 auto; padding:26px max(16px,env(safe-area-inset-left,0px)) 64px max(16px,env(safe-area-inset-right,0px)); display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start}
+.wrap{max-width:1060px; margin:0 auto; padding:26px max(16px,env(safe-area-inset-left,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px)); display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start}
 @media (max-width:860px){ .wrap{grid-template-columns:minmax(0,1fr)} }
 
-.progress{display:flex; align-items:center; gap:8px; margin-bottom:18px}
-.pstep{height:4px; flex:1; border-radius:999px; background:var(--line)}
+.progress{display:flex; align-items:center; gap:4px}
+.pstep{height:3px; flex:1; background:var(--line)}
 .pstep.done{background:var(--accent)} .pstep.now{background:var(--accent); opacity:.55}
+
+/* fixed bottom navigation footer */
+.navbar{position:fixed; left:0; right:0; bottom:0; z-index:40; background:var(--surface); border-top:1px solid var(--line); box-shadow:0 -6px 16px -12px rgba(27,36,48,.35)}
+.navbar-inner{max-width:1060px; margin:0 auto; display:flex; align-items:center; gap:14px;
+  padding:11px max(16px,env(safe-area-inset-left,0px)) calc(11px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.navbar-summary{display:flex; align-items:center; gap:10px; color:var(--muted); font-size:13px; margin-right:auto; white-space:nowrap}
+.navbar-summary b{color:var(--ink); font-weight:700; font-size:15px}
+.navbar-summary .ns-sep{width:1px; height:16px; background:var(--line-strong)}
+.navbar-actions{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end}
+@media (max-width:480px){ .navbar-summary .ns-hrs{display:none} }
 
 .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px; min-height:320px; display:flex; flex-direction:column}
 .eyebrow{font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent-ink); font-weight:600}
@@ -227,6 +240,15 @@ button{font-family:var(--font-ui); cursor:pointer}
   box-shadow:0 8px 24px rgba(0,0,0,.25)}
 .toast.err{background:var(--bad)}
 
+/* confirmation modal */
+.btn.danger{color:#fff; background:var(--bad); border-color:var(--bad)}
+.btn.danger:hover{filter:brightness(1.07)}
+.modal-overlay{position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(27,36,48,.5)}
+.modal{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 20px 50px rgba(0,0,0,.3); max-width:420px; width:100%; padding:22px 22px 18px}
+.modal h3{font-family:var(--font-display); font-size:19px; margin:0 0 8px}
+.modal p{color:var(--muted); font-size:14px; margin:0 0 18px; line-height:1.5}
+.modal-actions{display:flex; justify-content:flex-end; gap:10px}
+
 /* theme toggle — single secondary icon that cycles System → Light → Dark */
 .themebtn{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--muted); cursor:pointer; transition:background .12s,color .12s,border-color .12s}
 .themebtn:hover{background:var(--surface-2); color:var(--ink); border-color:var(--line-strong)}
@@ -262,10 +284,19 @@ button{font-family:var(--font-ui); cursor:pointer}
 </header>
 <div class="toast" id="toast" hidden></div>
 <div id="tip" hidden><button class="tipclose" type="button" aria-label="Close">×</button><div class="tipbody"></div></div>
+<div class="modal-overlay" id="confirmModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h3 id="confirmTitle">Clear the form?</h3>
+    <p>This erases all entries and returns to a blank form. It can't be undone — save a file first if you want to keep this work.</p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="confirmCancel" type="button">Cancel</button>
+      <button class="btn danger" id="confirmOk" type="button">Clear form</button>
+    </div>
+  </div>
+</div>
 
 <div class="wrap">
   <div class="main">
-    <div class="progress" id="progress" aria-hidden="true"></div>
     <div class="card" id="stepCard"></div>
   </div>
 
@@ -292,6 +323,18 @@ button{font-family:var(--font-ui); cursor:pointer}
     <div class="foot">Methodology adapted from the Rice CTE Course Workload Estimator.</div>
   </aside>
 </div>
+
+<footer class="navbar" id="navbar">
+  <div class="progress" id="progress" aria-hidden="true"></div>
+  <div class="navbar-inner">
+    <div class="navbar-summary" aria-hidden="true">
+      <span class="ns-che"><b class="tnum" id="navCHE">0.0</b> CHE</span>
+      <span class="ns-sep"></span>
+      <span class="ns-hrs"><b class="tnum" id="navTotal">0.0</b> hrs</span>
+    </div>
+    <div class="navbar-actions" id="navActions"></div>
+  </div>
+</footer>
 
 <script>
 /* ============================================================
@@ -562,11 +605,23 @@ let modulesAck = false;
 const fmt = n => (Math.round(n*10)/10).toFixed(1);
 
 function goStep(n){ cur=Math.max(0,n); render(); window.scrollTo(0,0); }
+function setFooter(stepType){
+  const S=steps();
+  document.getElementById('progress').innerHTML =
+    S.map((_,i)=>`<span class="pstep ${i<cur?'done':i===cur?'now':''}"></span>`).join('');
+  const actions=document.getElementById('navActions');
+  if(stepType==='intake') actions.innerHTML=`<button class="btn" id="nextBtn" type="button">Continue →</button>`;
+  else if(stepType==='activities') actions.innerHTML=`<button class="btn secondary" id="backBtn" type="button">← Back</button><button class="btn" id="nextBtn" type="button">Continue →</button>`;
+  else actions.innerHTML=`<button class="btn secondary" id="backBtn" type="button">← Back</button><button class="btn" id="saveBtn2" type="button">Save file</button><button class="btn ghost" id="restart2" type="button">Clear form</button>`;
+  const nb=document.getElementById('nextBtn'); if(nb) nb.onclick=()=>goStep(cur+1);
+  const bb=document.getElementById('backBtn'); if(bb) bb.onclick=()=>goStep(cur-1);
+  const sv=document.getElementById('saveBtn2'); if(sv) sv.onclick=downloadFile;
+  const rs=document.getElementById('restart2'); if(rs) rs.onclick=confirmClear;
+}
 function render(){
   const S=steps(); cur=Math.max(0,Math.min(cur,S.length-1));
   const step=S[cur], card=document.getElementById('stepCard');
-  document.getElementById('progress').innerHTML =
-    S.map((_,i)=>`<span class="pstep ${i<cur?'done':i===cur?'now':''}"></span>`).join('');
+  setFooter(step.type);
   const labelOf=i=>`Step ${i+1} of ${S.length}`;
 
   if(step.type==='intake'){
@@ -591,8 +646,7 @@ function render(){
         <span>This course has <b id="modWarnN">0</b> modules. More than 10 is unusual — please confirm this is correct.</span>
         <label class="modack"><input type="checkbox" id="modAck" ${modulesAck?'checked':''}> Yes, that's correct</label>
       </div>
-      <p class="resume">Resuming a saved estimate? <button type="button" class="linkbtn" id="openBtn2">Open a saved file</button> to pick up where you left off.</p>
-      <div class="nav"><button class="btn" id="nextBtn" type="button">Continue →</button></div>`;
+      <p class="resume">Resuming a saved estimate? <button type="button" class="linkbtn" id="openBtn2">Open a saved file</button> to pick up where you left off.</p>`;
     const sync=()=>{
       state.course.id=normalizeCourseId(val('f_id'));
       state.course.credits=num('f_credits');
@@ -612,7 +666,6 @@ function render(){
     card.addEventListener('input',sync);
     document.getElementById('f_id').addEventListener('blur',()=>{ document.getElementById('f_id').value=state.course.id; sync(); });
     sync();
-    document.getElementById('nextBtn').onclick=()=>goStep(cur+1);
     document.getElementById('openBtn2').onclick=()=>document.getElementById('fileInput').click();
   }
 
@@ -620,20 +673,14 @@ function render(){
     card.innerHTML = `
       <div class="eyebrow">${labelOf(cur)}</div>
       <h2>Activities</h2>
-      <p class="lede">Estimate workload by activity type. <span class="zero">Wherever an activity asks for time, enter it in minutes.</span> Each entry is tagged <b>Direct</b> (in-class) or <b>Out-of-class</b> and flows into the running totals.</p>
-      <div class="groups">${GROUPS.map(renderGroup).join('')}</div>
-      <div class="nav">
-        <button class="btn secondary" id="backBtn" type="button">← Back</button>
-        <button class="btn" id="nextBtn" type="button">Continue →</button>
-      </div>`;
+      <p class="lede">Estimate workload by activity type. <span class="zero">Wherever an activity asks for time, enter it in minutes.</span> Each entry is tagged <b>Direct</b> (in-class) or <b>Out-of-class</b> and flows into the running totals. Select the <span class="info" aria-hidden="true" style="cursor:default">i</span> next to any question for an explanation of what it covers and how it's calculated.</p>
+      <div class="groups">${GROUPS.map(renderGroup).join('')}</div>`;
     card.querySelectorAll('.ghead').forEach(h=>h.onclick=()=>{ const k=h.dataset.g; collapsed[k]=!collapsed[k]; render(); });
     card.querySelectorAll('.ynbtn').forEach(b=>b.onclick=()=>{ state.gates[b.dataset.gate]=(b.dataset.val==='yes'); render(); });
     card.addEventListener('input', e=>{
       const el=e.target;
       if(el.classList.contains('pinput')){ state.inputs[el.dataset.id]=el.value; updateReadouts(); }
     });
-    document.getElementById('backBtn').onclick=()=>goStep(cur-1);
-    document.getElementById('nextBtn').onclick=()=>goStep(cur+1);
     updateReadouts();
   }
 
@@ -652,15 +699,7 @@ function render(){
       <div class="groups"><div class="gbody" style="padding:0; gap:8px">${rows}</div></div>
       <h3 class="selhead">Your selections</h3>
       <div class="sellist">${gateSelections().map(s=>{const c=s.ans==='Yes'?'yes':s.ans==='No'?'no':'na';return `<div class="selrow"><span class="q">${s.q}</span><span class="sa ${c}">${s.ans}</span></div>`;}).join('')}</div>
-      <p class="savehint"><b>Save file</b> downloads an Excel workbook with a ready-to-submit <b>Report</b> sheet plus a working sheet you can edit. Reopen that file anytime to revise.</p>
-      <div class="nav">
-        <button class="btn secondary" id="backBtn" type="button">← Back</button>
-        <button class="btn" id="saveBtn2" type="button">Save file</button>
-        <button class="btn ghost" id="restart2" type="button">Clear form</button>
-      </div>`;
-    document.getElementById('backBtn').onclick=()=>goStep(cur-1);
-    document.getElementById('saveBtn2').onclick=downloadFile;
-    document.getElementById('restart2').onclick=restart;
+      <p class="savehint"><b>Save file</b> downloads an Excel workbook with a ready-to-submit <b>Report</b> sheet plus a working sheet you can edit. Reopen that file anytime to revise.</p>`;
   }
 
   recompute();
@@ -765,6 +804,7 @@ function recompute(){
   document.getElementById('sumOoc').textContent=fmt(ooc);
   document.getElementById('sumTotal').textContent=fmt(total);
   document.getElementById('cheVal').textContent=fmt(che);
+  { const nc=document.getElementById('navCHE'); if(nc) nc.textContent=fmt(che); const nt=document.getElementById('navTotal'); if(nt) nt.textContent=fmt(total); }
 
   const credit=state.course.credits;
   const pill=document.getElementById('chePill'), txt=document.getElementById('chePillText'), rb=document.getElementById('cheRange');
@@ -1018,8 +1058,22 @@ function applyTheme(choice){
 })();
 
 /* wire persistent controls */
-document.getElementById('restartBtn').onclick=restart;
-{ const sc=document.getElementById('sampleClear'); if(sc) sc.onclick=restart; }
+/* confirm before clearing, unless the form is already empty */
+function hasAnyData(){
+  if(state.course.id || state.course.credits || (state.course.by&&state.course.by.trim()) || state.modules) return true;
+  if(Object.values(state.inputs).some(v=>v!==''&&v!=null)) return true;
+  if(Object.keys(state.gates).length) return true;
+  return false;
+}
+function confirmClear(){ if(!hasAnyData()){ restart(); return; } const m=document.getElementById('confirmModal'); if(m) m.hidden=false; }
+function closeConfirm(){ const m=document.getElementById('confirmModal'); if(m) m.hidden=true; }
+document.getElementById('confirmOk').onclick=()=>{ closeConfirm(); restart(); };
+document.getElementById('confirmCancel').onclick=closeConfirm;
+document.getElementById('confirmModal').addEventListener('click',e=>{ if(e.target.id==='confirmModal') closeConfirm(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeConfirm(); });
+
+document.getElementById('restartBtn').onclick=confirmClear;
+{ const sc=document.getElementById('sampleClear'); if(sc) sc.onclick=confirmClear; }  // sample-banner clear also confirms
 document.getElementById('saveBtn').onclick=downloadFile;
 document.getElementById('openBtn').onclick=()=>document.getElementById('fileInput').click();
 document.getElementById('fileInput').onchange=e=>{ const f=e.target.files[0]; if(f) restoreFromFile(f); e.target.value=''; };
