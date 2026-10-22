@@ -247,7 +247,15 @@ button{font-family:var(--font-ui); cursor:pointer}
 .modal{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 20px 50px rgba(0,0,0,.3); max-width:420px; width:100%; padding:22px 22px 18px}
 .modal h3{font-family:var(--font-display); font-size:19px; margin:0 0 8px}
 .modal p{color:var(--muted); font-size:14px; margin:0 0 18px; line-height:1.5}
-.modal-actions{display:flex; justify-content:flex-end; gap:10px}
+.modal-actions{display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap}
+.vallist{max-height:40vh; overflow-y:auto; margin:0 0 18px; border:1px solid var(--line); border-radius:9px}
+.valrow{display:flex; align-items:baseline; gap:8px; padding:9px 12px; font-size:13.5px}
+.valrow + .valrow{border-top:1px solid var(--line)}
+.valrow .vg{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); flex:none; min-width:74px}
+.valrow .vt{color:var(--ink)}
+.valrow .vt small{color:var(--muted); display:block; font-size:12px}
+/* highlight a prompt that needs fixing */
+.prompt.needsfix, .derived.needsfix{outline:2px solid var(--bad); outline-offset:3px; border-radius:9px}
 
 /* theme toggle — single secondary icon that cycles System → Light → Dark */
 .themebtn{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid var(--line); border-radius:8px; background:transparent; color:var(--muted); cursor:pointer; transition:background .12s,color .12s,border-color .12s}
@@ -291,6 +299,17 @@ button{font-family:var(--font-ui); cursor:pointer}
     <div class="modal-actions">
       <button class="btn secondary" id="confirmCancel" type="button">Cancel</button>
       <button class="btn danger" id="confirmOk" type="button">Clear form</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="validateModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="valTitle">
+    <h3 id="valTitle">A few items need attention</h3>
+    <p>These parts of the form aren't complete yet. You can finish them, or save anyway and come back later.</p>
+    <div class="vallist" id="valList"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="valSaveAnyway" type="button">Save anyway</button>
+      <button class="btn" id="valGoTo" type="button">Take me there</button>
     </div>
   </div>
 </div>
@@ -602,6 +621,7 @@ function gateSelections(){
 function steps(){ return [{type:'intake'},{type:'activities'},{type:'review'}]; }
 let cur = 0;
 let modulesAck = false;
+let highlightId = null;
 const fmt = n => (Math.round(n*10)/10).toFixed(1);
 
 function goStep(n){ cur=Math.max(0,n); render(); window.scrollTo(0,0); }
@@ -615,12 +635,13 @@ function setFooter(stepType){
   else actions.innerHTML=`<button class="btn secondary" id="backBtn" type="button">← Back</button><button class="btn" id="saveBtn2" type="button">Save file</button><button class="btn ghost" id="restart2" type="button">Clear form</button>`;
   const nb=document.getElementById('nextBtn'); if(nb) nb.onclick=()=>goStep(cur+1);
   const bb=document.getElementById('backBtn'); if(bb) bb.onclick=()=>goStep(cur-1);
-  const sv=document.getElementById('saveBtn2'); if(sv) sv.onclick=downloadFile;
+  const sv=document.getElementById('saveBtn2'); if(sv) sv.onclick=saveWithCheck;
   const rs=document.getElementById('restart2'); if(rs) rs.onclick=confirmClear;
 }
 function render(){
   const S=steps(); cur=Math.max(0,Math.min(cur,S.length-1));
   const step=S[cur], card=document.getElementById('stepCard');
+  card.oninput=null;   // clear any prior step's input handler before this step sets its own
   setFooter(step.type);
   const labelOf=i=>`Step ${i+1} of ${S.length}`;
 
@@ -663,7 +684,7 @@ function render(){
         !(idOK && state.course.credits>0 && modOK && state.course.date && state.course.by.trim());
       recompute();
     };
-    card.addEventListener('input',sync);
+    card.oninput=sync;   // single handler, overwritten each render (no stale listeners accumulating)
     document.getElementById('f_id').addEventListener('blur',()=>{ document.getElementById('f_id').value=state.course.id; sync(); });
     sync();
     document.getElementById('openBtn2').onclick=()=>document.getElementById('fileInput').click();
@@ -676,11 +697,11 @@ function render(){
       <p class="lede">Estimate workload by activity type. <span class="zero">Wherever an activity asks for time, enter it in minutes.</span> Each entry is tagged <b>Direct</b> (in-class) or <b>Out-of-class</b> and flows into the running totals. Select the <span class="info" aria-hidden="true" style="cursor:default">i</span> next to any question for an explanation of what it covers and how it's calculated.</p>
       <div class="groups">${GROUPS.map(renderGroup).join('')}</div>`;
     card.querySelectorAll('.ghead').forEach(h=>h.onclick=()=>{ const k=h.dataset.g; collapsed[k]=!collapsed[k]; render(); });
-    card.querySelectorAll('.ynbtn').forEach(b=>b.onclick=()=>{ state.gates[b.dataset.gate]=(b.dataset.val==='yes'); render(); });
-    card.addEventListener('input', e=>{
+    card.querySelectorAll('.ynbtn').forEach(b=>b.onclick=()=>{ if(b.dataset.gate===highlightId) highlightId=null; state.gates[b.dataset.gate]=(b.dataset.val==='yes'); render(); });
+    card.oninput=e=>{   // single handler, overwritten each render
       const el=e.target;
-      if(el.classList.contains('pinput')){ state.inputs[el.dataset.id]=el.value; updateReadouts(); }
-    });
+      if(el.classList.contains('pinput')){ if(highlightId){ highlightId=null; } state.inputs[el.dataset.id]=el.value; updateReadouts(); }
+    };
     updateReadouts();
   }
 
@@ -712,7 +733,7 @@ function renderGroup(g){
   } else {
     body = g.items.map(it=>{
       if(it.kind==='derived_modules' || it.kind==='feedback'){
-        return `<div class="derived">
+        return `<div class="derived${it.id===highlightId?' needsfix':''}">
           <span class="bk direct">Direct</span>
           <span class="nm">${it.label} ${infoIcon(it.id)}<small>${it.note}</small></span>
           <span class="amt tnum" data-hrs="${it.id}">${fmt(itemHours(it))}</span></div>`;
@@ -762,7 +783,7 @@ function renderGroup(g){
           ${hasHours?`<span class="ans"><span class="amt tnum" data-hrs="${it.id}">0.0</span> hrs</span>`:''}
         </div>
         ${breakdown}` : '';
-      return `<div class="prompt ${gated?'gated':''}">${gateHtml}${inputHtml}</div>`;
+      return `<div class="prompt ${gated?'gated':''}${it.id===highlightId?' needsfix':''}">${gateHtml}${inputHtml}</div>`;
     }).join('');
   }
   const sub = g.items.reduce((s,it)=>s+itemHours(it),0);
@@ -986,11 +1007,12 @@ async function buildWorkbook(){
   return wb;
 }
 
-async function downloadFile(){
+async function downloadFile(inProgress){
   try{
     const wb=await buildWorkbook(); const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const name=(state.course.id?state.course.id.replace(/[^\w.-]+/g,'_'):'course')+'_workload.xlsx';
+    const base=(state.course.id?state.course.id.replace(/[^\w.-]+/g,'_'):'course')+'_workload';
+    const name=base+(inProgress?'_saved-progress':'')+'.xlsx';
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
     document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
     toast('Saved '+name);
@@ -1072,9 +1094,58 @@ document.getElementById('confirmCancel').onclick=closeConfirm;
 document.getElementById('confirmModal').addEventListener('click',e=>{ if(e.target.id==='confirmModal') closeConfirm(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeConfirm(); });
 
+/* ---- completeness check used by the final "Save file" ---- */
+function formIssues(){
+  const out=[];
+  if(!state.course.id || !isValidCourseId(state.course.id)) out.push({step:0,label:'Course ID'});
+  if(!(state.course.credits>0)) out.push({step:0,label:'Credit Hours'});
+  if(!(state.modules>0)) out.push({step:0,label:'Number of Modules'});
+  if(!state.course.date) out.push({step:0,label:'Date Completed'});
+  if(!(state.course.by && state.course.by.trim())) out.push({step:0,label:'Completed By'});
+  GROUPS.forEach(g=>g.items.forEach(it=>{
+    if(it.kind==='derived_modules' || it.kind==='feedback' || !it.gate) return;
+    const ans=state.gates[it.id];
+    if(ans!==true && ans!==false){ out.push({step:1,group:g.key,id:it.id,label:it.label,why:'Not answered yet'}); return; }
+    if(ans===true){
+      const blank=id=>{ const s=state.inputs[id]; return s===''||s==null||isNaN(parseFloat(s)); };
+      if(it.pre && blank(it.pre.id)) out.push({step:1,group:g.key,id:it.id,label:it.pre.label||it.label,why:'Marked “Yes” — value needed'});
+      if(blank(it.id)) out.push({step:1,group:g.key,id:it.id,label:it.label,why:'Marked “Yes” — value needed'});
+      if(it.desc && !String(state.inputs[it.desc.id]||'').trim()) out.push({step:1,group:g.key,id:it.id,label:it.label,why:'Description needed'});
+    }
+  }));
+  return out;
+}
+function closeValidate(){ const m=document.getElementById('validateModal'); if(m) m.hidden=true; }
+let pendingIssues=[];
+function saveWithCheck(){
+  const issues=formIssues();
+  if(issues.length===0){ downloadFile(false); return; }  // complete → clean filename
+  pendingIssues=issues;
+  const list=document.getElementById('valList');
+  const stepName=s=>s===0?'Details':'Activity';
+  list.innerHTML=issues.map(i=>`<div class="valrow"><span class="vg">${stepName(i.step)}</span><span class="vt">${i.label}${i.why?`<small>${i.why}</small>`:''}</span></div>`).join('');
+  document.getElementById('validateModal').hidden=false;
+}
+function goToIssues(){
+  closeValidate();
+  const first=pendingIssues[0]; if(!first){ return; }
+  if(first.step===0){ highlightId=null; goStep(0); return; }
+  pendingIssues.filter(i=>i.step===1).forEach(i=>{ if(i.group) collapsed[i.group]=false; });
+  highlightId=first.id||null;
+  cur=1; render(); window.scrollTo(0,0);
+  setTimeout(()=>{ const el=document.querySelector('.needsfix'); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'center'}); },60);
+}
+document.getElementById('valSaveAnyway').onclick=()=>{ closeValidate(); downloadFile(true); };  // incomplete → _saved-progress file
+document.getElementById('valGoTo').onclick=goToIssues;
+document.getElementById('validateModal').addEventListener('click',e=>{ if(e.target.id==='validateModal') closeValidate(); });
+
+/* surface unexpected errors to the user instead of only the console */
+window.addEventListener('error',function(){ try{ toast('Something went wrong. Your entries are still here — reload the page if it stops responding.', true); }catch(_){} });
+window.addEventListener('unhandledrejection',function(){ try{ toast('Something went wrong completing that action.', true); }catch(_){} });
+
 document.getElementById('restartBtn').onclick=confirmClear;
 { const sc=document.getElementById('sampleClear'); if(sc) sc.onclick=confirmClear; }  // sample-banner clear also confirms
-document.getElementById('saveBtn').onclick=downloadFile;
+document.getElementById('saveBtn').onclick=()=>downloadFile(true);  // header "Save progress" → _saved-progress file
 document.getElementById('openBtn').onclick=()=>document.getElementById('fileInput').click();
 document.getElementById('fileInput').onchange=e=>{ const f=e.target.files[0]; if(f) restoreFromFile(f); e.target.value=''; };
 
