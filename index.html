@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Course Workload Estimator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+/* ---- Layout concept: a guided intake — course + modules first, then an
+       "Activities" page grouped by type with one plain-language prompt each,
+       beside a persistent rail tallying Direct vs. Out-of-Class hours + CHE. ---- */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --surface-2:#eef1f5;
+  --ink:#1b2430; --muted:#5b6675; --faint:#8a93a2;
+  --line:#e1e5ec; --line-strong:#cfd5df;
+  --accent:#2f5d84; --accent-ink:#244a6a; --accent-soft:#e7eef5;
+  --direct:#2f5d84; --direct-soft:#e7eef5;
+  --ooc:#6a4a86; --ooc-soft:#efe8f5;
+  --good:#2e7d5b; --good-soft:#e3f1ea;
+  --warn:#9c6a14; --warn-soft:#f6ecd7;
+  --radius:12px; --shadow:0 1px 2px rgba(27,36,48,.06),0 10px 28px rgba(27,36,48,.07);
+  --font-display:'Spectral',Georgia,'Times New Roman',serif;
+  --font-ui:'IBM Plex Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --surface:#1b212b; --surface-2:#222a36;
+  --ink:#e8ebf0; --muted:#9aa4b2; --faint:#6f7a89;
+  --line:#2a313d; --line-strong:#3a4350;
+  --accent:#6fa8d8; --accent-ink:#9cc5e8; --accent-soft:#1f2c3a;
+  --direct:#6fa8d8; --direct-soft:#1f2c3a;
+  --ooc:#b291d4; --ooc-soft:#282036;
+  --good:#5bb98c; --good-soft:#182a22;
+  --warn:#d6a24a; --warn-soft:#2c2417;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --surface:#1b212b; --surface-2:#222a36;
+  --ink:#e8ebf0; --muted:#9aa4b2; --faint:#6f7a89;
+  --line:#2a313d; --line-strong:#3a4350;
+  --accent:#6fa8d8; --accent-ink:#9cc5e8; --accent-soft:#1f2c3a;
+  --direct:#6fa8d8; --direct-soft:#1f2c3a;
+  --ooc:#b291d4; --ooc-soft:#282036;
+  --good:#5bb98c; --good-soft:#182a22;
+  --warn:#d6a24a; --warn-soft:#2c2417;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+[hidden]{display:none !important}
+body{background:var(--bg); color:var(--ink); font-family:var(--font-ui); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display); font-weight:600; margin:0; text-wrap:balance}
+.tnum{font-variant-numeric:tabular-nums}
+
+.appbar{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:14px; padding:14px max(16px,env(safe-area-inset-left,0px)) 14px max(16px,env(safe-area-inset-right,0px)); background:var(--surface); border-bottom:1px solid var(--line); box-shadow:0 1px 0 rgba(27,36,48,.04), 0 6px 16px -12px rgba(27,36,48,.3)}
+.brand{display:flex; flex-direction:column; gap:1px; margin-right:auto; min-width:0}
+.brand h1{font-size:25px; letter-spacing:-.015em; line-height:1.1}
+.brand .sub{font-size:11.5px; color:var(--muted); letter-spacing:.02em}
+button{font-family:var(--font-ui); cursor:pointer}
+.btn{font-size:14px; font-weight:500; color:#fff; background:var(--accent); border:1px solid var(--accent); border-radius:9px; padding:9px 18px; transition:filter .12s; display:inline-flex; align-items:center; gap:7px}
+.btn:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.45; cursor:not-allowed; filter:none}
+.btn.secondary{color:var(--ink); background:var(--surface); border-color:var(--line-strong)}
+.btn.secondary:hover{background:var(--surface-2); filter:none}
+.btn.ghost{background:transparent; border-color:transparent; color:var(--muted); padding:9px 12px}
+.btn.ghost:hover{background:var(--surface-2); color:var(--ink)}
+
+.wrap{max-width:1060px; margin:0 auto; padding:26px max(16px,env(safe-area-inset-left,0px)) 64px max(16px,env(safe-area-inset-right,0px)); display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start}
+@media (max-width:860px){ .wrap{grid-template-columns:minmax(0,1fr)} }
+
+.progress{display:flex; align-items:center; gap:8px; margin-bottom:18px}
+.pstep{height:4px; flex:1; border-radius:999px; background:var(--line)}
+.pstep.done{background:var(--accent)} .pstep.now{background:var(--accent); opacity:.55}
+
+.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px; min-height:320px; display:flex; flex-direction:column}
+.eyebrow{font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent-ink); font-weight:600}
+.card h2{font-size:24px; margin:7px 0 4px; letter-spacing:-.01em}
+.lede{color:var(--muted); font-size:14.5px; max-width:62ch; margin-bottom:22px}
+.lede .zero{color:var(--ink); font-weight:500}
+.resume{font-size:13px; color:var(--muted); margin:-6px 0 20px; padding:10px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:9px}
+.fhint{font-size:11.5px; color:var(--faint); margin-top:2px}
+.fhint.err{color:var(--bad)}
+.modwarn{display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:-6px 0 20px; padding:12px 14px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:9px; font-size:13px; color:var(--ink)}
+.modwarn b{font-weight:700}
+.modack{display:inline-flex; align-items:center; gap:7px; font-weight:600; cursor:pointer; margin-left:auto; white-space:nowrap}
+.modack input{width:16px; height:16px; accent-color:var(--accent)}
+.savehint{font-size:12.5px; color:var(--muted); margin:18px 0 0; padding:9px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:9px}
+.linkbtn{font-family:var(--font-ui); font-size:13px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer}
+.linkbtn:hover{color:var(--accent-ink)}
+
+.fields{display:grid; gap:16px; grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:520px){ .fields{grid-template-columns:1fr} }
+.field{display:flex; flex-direction:column; gap:6px; min-width:0}
+.field.wide{grid-column:1/-1}
+.field label{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600}
+.field .req{color:var(--accent)}
+.field input{font-family:var(--font-ui); font-size:16px; color:var(--ink); background:var(--surface); border:1px solid var(--line-strong); border-radius:9px; padding:11px 13px; width:100%}
+.field input:focus-visible{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+
+/* ---------- Activities page: group cards ---------- */
+.groups{display:flex; flex-direction:column; gap:14px}
+.group{border:1px solid var(--line); border-radius:11px; overflow:hidden; background:var(--surface)}
+.group > .ghead{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:13px 15px; background:var(--surface-2); border:none; border-bottom:1px solid var(--line)}
+.group.collapsed > .ghead{border-bottom-color:transparent}
+.ghead .gname{font-family:var(--font-display); font-size:16px; font-weight:600}
+.ghead .gsum{margin-left:auto; font-size:12.5px; color:var(--muted)}
+.ghead .gsum b{color:var(--ink); font-weight:600}
+.ghead .gcaret{color:var(--faint); transition:transform .15s; line-height:0}
+.group.collapsed .gcaret{transform:rotate(-90deg)}
+.gbody{padding:14px 15px; display:flex; flex-direction:column; gap:12px}
+.group.collapsed .gbody{display:none}
+
+/* derived (auto) line */
+.derived{display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px dashed var(--line-strong); border-radius:9px; background:var(--surface-2)}
+.derived .nm{font-weight:500; min-width:0} .derived .nm small{display:block; color:var(--muted); font-size:12px; font-weight:400; margin-top:1px}
+.derived .amt{margin-left:auto; font-family:var(--font-display); font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap}
+
+/* prompted item */
+.prompt{border:1px solid var(--line); border-radius:9px; padding:13px 14px; display:flex; flex-direction:column; gap:10px}
+.qrow{display:flex; align-items:flex-start; gap:10px}
+.qrow .q{font-weight:500; font-size:14.5px; line-height:1.4}
+.qrow .tags{display:flex; gap:6px; flex:none; flex-wrap:wrap; justify-content:flex-end}
+.breakdown b{color:var(--ink); font-weight:600}
+.prompt.gated{gap:12px}
+.gaterow{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.gaterow .gq{font-weight:500; font-size:14.5px; line-height:1.4; flex:1; min-width:180px}
+.yn{display:inline-flex; gap:6px; flex:none}
+.ynbtn{font-size:13px; font-weight:600; color:var(--muted); background:var(--surface); border:1px solid var(--line-strong); border-radius:8px; padding:7px 16px}
+.ynbtn:hover{background:var(--surface-2); color:var(--ink)}
+.ynbtn.on{color:#fff; background:var(--accent); border-color:var(--accent)}
+.prompt.gated .qrow{padding-top:2px; border-top:1px solid var(--line); margin-top:2px}
+.bk{font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:3px 7px; border-radius:999px; flex:none; white-space:nowrap}
+.bk.direct{background:var(--direct-soft); color:var(--direct)}
+.bk.ooc{background:var(--ooc-soft); color:var(--ooc)}
+.phelp{font-size:12px; color:var(--muted); line-height:1.45; margin-top:-2px}
+.inrow{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.inrow input{width:116px; font-family:var(--font-ui); font-size:16px; color:var(--ink); background:var(--surface); border:1px solid var(--line-strong); border-radius:8px; padding:9px 11px; font-variant-numeric:tabular-nums; -moz-appearance:textfield}
+.inrow input::-webkit-outer-spin-button,.inrow input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.inrow input:focus-visible{outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft)}
+.inrow .unit{color:var(--muted); font-size:13.5px}
+.inrow .ans{margin-left:auto; display:flex; align-items:baseline; gap:6px; color:var(--muted); font-size:13px}
+.inrow .ans .amt{font-family:var(--font-display); font-size:19px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums}
+.descbox{width:100%; font-family:var(--font-ui); font-size:14.5px; color:var(--ink); background:var(--surface); border:1px solid var(--line-strong); border-radius:8px; padding:9px 11px; resize:vertical; min-height:42px; line-height:1.5}
+.descbox:focus-visible{outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft)}
+
+.placeholder{color:var(--faint); font-size:13px; padding:6px 2px; display:flex; align-items:center; gap:8px}
+.placeholder .d{width:6px; height:6px; border-radius:50%; background:var(--line-strong)}
+
+.nav{display:flex; gap:10px; margin-top:auto; padding-top:26px}
+.nav .btn.secondary{margin-right:auto}
+
+/* selections list (review) */
+.selhead{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-family:var(--font-ui); font-weight:600; margin:22px 0 8px}
+.sellist{border:1px solid var(--line); border-radius:9px; overflow:hidden}
+.selrow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 13px; background:var(--surface); font-size:13.5px}
+.selrow + .selrow{border-top:1px solid var(--line)}
+.selrow .q{color:var(--ink); min-width:0}
+.sa{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:3px 8px; border-radius:999px; white-space:nowrap; flex:none}
+.sa.yes{background:var(--good-soft); color:var(--good)}
+.sa.no{background:var(--surface-2); color:var(--muted)}
+.sa.na{background:var(--warn-soft); color:var(--warn)}
+
+/* review list */
+.lineitem{display:flex; align-items:center; gap:12px; padding:11px 13px; border:1px solid var(--line); border-radius:9px}
+.lineitem .nm{font-weight:500; min-width:0} .lineitem .nm small{display:block; color:var(--muted); font-size:12px; font-weight:400; margin-top:1px}
+.lineitem .amt{margin-left:auto; font-family:var(--font-display); font-size:18px; font-weight:600; font-variant-numeric:tabular-nums}
+
+/* ---------- Summary rail ---------- */
+.rail{position:sticky; top:calc(78px + env(safe-area-inset-top,0px)); display:flex; flex-direction:column; gap:14px}
+@media (max-width:860px){ .rail{position:static} }
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden}
+.panel h3{font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-family:var(--font-ui); font-weight:600; padding:14px 16px 0}
+.rows{padding:12px 16px 14px; display:flex; flex-direction:column}
+.srow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:7px 0}
+.srow + .srow{border-top:1px solid var(--line)}
+.srow .k{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px}
+.srow .k .sw{width:9px; height:9px; border-radius:3px; flex:none}
+.sw.direct{background:var(--direct)} .sw.ooc{background:var(--ooc)}
+.srow .v{font-variant-numeric:tabular-nums; font-weight:600; font-size:15px}
+.srow.grand{margin-top:3px; padding-top:9px; border-top:2px solid var(--line-strong)}
+.srow.grand .k{color:var(--ink); font-weight:600; font-size:14px} .srow.grand .v{font-size:18px}
+.che{padding:16px; border-top:1px solid var(--line); text-align:center}
+.che .big{font-family:var(--font-display); font-size:44px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums}
+.che .cap{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:600; margin-top:6px}
+.pill{display:inline-flex; align-items:center; gap:6px; margin-top:12px; font-size:12px; font-weight:600; padding:5px 11px; border-radius:999px}
+.pill .dot{width:7px; height:7px; border-radius:50%}
+.pill.good{background:var(--good-soft); color:var(--good)} .pill.good .dot{background:var(--good)}
+.pill.warn{background:var(--warn-soft); color:var(--warn)} .pill.warn .dot{background:var(--warn)}
+.pill.none{background:var(--surface-2); color:var(--faint)} .pill.none .dot{background:var(--faint)}
+.che .hint2{font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.45}
+.foot{color:var(--faint); font-size:11px; text-align:center; padding:2px 8px}
+
+.toolbar{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.appbar .btn{padding:8px 13px; font-size:13px}
+
+/* range box under CHE */
+.rangebox{display:flex; align-items:stretch; justify-content:center; gap:14px; margin-top:12px; padding:10px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:9px}
+.rpair{display:flex; flex-direction:column; gap:2px; align-items:center}
+.rpair .rk{font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600}
+.rpair .rv{font-family:var(--font-display); font-size:16px; font-weight:600}
+.rsep{width:1px; background:var(--line-strong)}
+
+/* toast */
+/* info icon + tooltip */
+.info{display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%; border:1px solid var(--line-strong); background:var(--surface); color:var(--muted); font-size:10px; font-weight:700; font-style:italic; font-family:Georgia,serif; line-height:1; cursor:pointer; vertical-align:middle; padding:0; flex:none; transition:background .12s,border-color .12s,color .12s}
+.info:hover{background:var(--accent); border-color:var(--accent); color:#fff}
+.info:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+#tip{position:fixed; z-index:60; max-width:300px; width:max-content; background:var(--surface); color:var(--ink); border:1px solid var(--line-strong); border-radius:10px; box-shadow:0 10px 30px rgba(27,36,48,.18); padding:12px 14px; font-size:13px; line-height:1.5}
+#tip .tipbody p{margin:0 0 6px} #tip .tipbody p:last-child{margin-bottom:0}
+#tip .tiprate{color:var(--muted); font-size:12px}
+#tip .tipclose{position:absolute; top:5px; right:6px; width:22px; height:22px; border:none; background:none; color:var(--faint); font-size:17px; line-height:1; cursor:pointer; border-radius:6px; display:none}
+#tip .tipclose:hover{background:var(--surface-2); color:var(--ink)}
+#tip.pinned{padding-right:26px} #tip.pinned .tipclose{display:block}
+.toast{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:50; max-width:90%;
+  background:var(--ink); color:var(--bg); font-size:13px; font-weight:500; padding:10px 16px; border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.toast.err{background:var(--bad)}
+
+/* theme segmented control */
+.themeseg{display:inline-flex; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; background:var(--surface)}
+.segbtn{font-family:var(--font-ui); font-size:12px; font-weight:500; color:var(--muted); background:transparent; border:none; padding:7px 11px; cursor:pointer; transition:background .12s,color .12s}
+.segbtn + .segbtn{border-left:1px solid var(--line-strong)}
+.segbtn:hover{background:var(--surface-2); color:var(--ink)}
+.segbtn.on{background:var(--accent); color:#fff}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brand">
+    <h1>Course Workload Estimator</h1>
+    <span class="sub">A guided estimate of student workload and credit-hour equivalent</span>
+  </div>
+  <div class="toolbar">
+    <button class="btn secondary" id="saveBtn" type="button" title="Download your work as an Excel file — finished or in progress — to reopen later or submit">Save progress</button>
+    <button class="btn secondary" id="openBtn" type="button" title="Load a previously saved .xlsx file to resume or revise it">Open saved file</button>
+    <!-- TEST DATA — remove this button before production -->
+    <button class="btn ghost" id="testBtn" type="button" title="Fill the form with a sample 10-module course for testing">Load sample data</button>
+    <!-- /TEST DATA -->
+    <button class="btn ghost" id="restartBtn" type="button">Clear form</button>
+    <div class="themeseg" role="group" aria-label="Color theme">
+      <button type="button" class="segbtn" data-theme-choice="system" title="Follow system setting">System</button>
+      <button type="button" class="segbtn" data-theme-choice="light" title="Light theme">Light</button>
+      <button type="button" class="segbtn" data-theme-choice="dark" title="Dark theme">Dark</button>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx" hidden>
+</header>
+<div class="toast" id="toast" hidden></div>
+<div id="tip" hidden><button class="tipclose" type="button" aria-label="Close">×</button><div class="tipbody"></div></div>
+
+<div class="wrap">
+  <div class="main">
+    <div class="progress" id="progress" aria-hidden="true"></div>
+    <div class="card" id="stepCard"></div>
+  </div>
+
+  <aside class="rail">
+    <div class="panel">
+      <h3>Running estimate</h3>
+      <div class="rows">
+        <div class="srow"><span class="k"><span class="sw direct"></span>Direct Instruction</span><span class="v tnum" id="sumDirect">0.0</span></div>
+        <div class="srow"><span class="k"><span class="sw ooc"></span>Out-of-Class Work</span><span class="v tnum" id="sumOoc">0.0</span></div>
+        <div class="srow grand"><span class="k">Total Hours</span><span class="v tnum" id="sumTotal">0.0</span></div>
+      </div>
+      <div class="che">
+        <div class="big tnum" id="cheVal">0.0</div>
+        <div class="cap">Credit-Hour Equivalent</div>
+        <div><span class="pill none" id="chePill"><span class="dot"></span><span id="chePillText">Awaiting credit hours</span></span></div>
+        <div class="rangebox" id="cheRange" hidden>
+          <div class="rpair"><span class="rk">Expected</span><span class="rv tnum" id="rangeTarget">—</span></div>
+          <div class="rsep"></div>
+          <div class="rpair"><span class="rk">Acceptable range</span><span class="rv tnum" id="rangeBand">—</span></div>
+        </div>
+        <div class="hint2" id="cheHint">Based on 30 hours of student work per credit hour.</div>
+      </div>
+    </div>
+    <div class="foot">Methodology adapted from the Rice CTE Course Workload Estimator.</div>
+  </aside>
+</div>
+
+<script>
+/* ============================================================
+   MODEL
+   ============================================================ */
+const HOURS_PER_CREDIT = 30;
+const BAND = 0.4;
+const todayISO = new Date().toISOString().slice(0,10);
+
+const state = {
+  course: { id:'', credits:null, date:todayISO, by:'' },
+  modules: null,
+  inputs: {},   // itemId -> raw string value for prompted items
+  gates: {},    // itemId -> true/false for yes/no gated prompts
+};
+
+/* ---- Activity groups ----
+   item kinds:
+     'derived_modules' — no prompt; hours = modules * perModule
+     'number'          — prompt for a count; hours = value * mult / div
+   Every item carries its own bucket ('direct' | 'ooc').               */
+const GROUPS = [
+  { key:'readings', label:'Readings', items:[
+      { id:'read_docs', kind:'derived_modules', bucket:'direct', perModule:1,
+        label:'Reading: Course Documents',
+        note:'Auto-estimated from module count (1 hr per module).' },
+      { id:'read_pages', kind:'number', bucket:'ooc', mult:1, div:16,
+        label:'Reading: Textbooks & Journal Articles', unit:'pages',
+        gate:'Are students assigned readings from textbooks or journal articles?',
+        prompt:'How many pages are assigned for students to read in textbooks and/or journal articles?',
+        help:'If any article readings are online and lack pagination, estimate the number of pages at 600 words per page.',
+        rate:'≈16 pages/hr' },
+      { id:'read_lectures', kind:'number', bucket:'direct', mult:1, div:2,
+        label:'Reading: Written Lectures or Lessons', unit:'lectures / lessons',
+        gate:'Does the course include written lectures or lessons?',
+        prompt:'How many written lectures or lessons are in the course?',
+        help:'', rate:'30 min each' },
+  ]},
+  { key:'multimedia', label:'Multimedia', items:[
+      { id:'mm_instructional', kind:'number', bucket:'direct', mult:1, div:60,
+        label:'Viewing/Listening: Instructional Media', unit:'minutes',
+        gate:'Does the course include instructional videos or podcasts?',
+        prompt:'How many minutes of instructional videos or podcasts (lectures, lessons, demonstrations) are students assigned to watch or listen to?',
+        help:'', rate:'counted 1:1' },
+      { id:'mm_slides', kind:'number', bucket:'direct', mult:1, div:20,
+        label:'Viewing: Lecture/Lesson Slides', unit:'slides',
+        gate:'Does the course include standalone lecture or lesson slide decks?',
+        prompt:'How many lecture or lesson slides are presented to students as standalone decks?',
+        help:'Count only slides students view on their own. Do not include slides already shown within a video or podcast counted above — that would double-count.',
+        rate:'≈20 slides/hr' },
+      { id:'mm_supplementary', kind:'number', bucket:'ooc', mult:1, div:60,
+        label:'Viewing/Listening: Supplementary Media', unit:'minutes',
+        gate:'Does the course include supplementary (non-lecture) videos or podcasts?',
+        prompt:'How many minutes of supplementary (non-lecture) videos or podcasts are students assigned?',
+        help:'', rate:'counted 1:1' },
+  ]},
+  { key:'discussions', label:'Discussions', items:[
+      { id:'disc_initial', kind:'number', unit:'initial posts', rate:'1 hr each',
+        label:'Discussing: Initial Posts',
+        gate:'Do students make initial discussion posts?',
+        prompt:'How many total initial posts are required in the course discussion activities?',
+        help:'Each initial post is counted twice: about 1 hour of in-class discussion and 1 hour of out-of-class drafting.',
+        splits:[
+          {bucket:'direct', mult:1, div:1, label:'Discussing: Initial Posts'},
+          {bucket:'ooc',    mult:1, div:1, label:'Drafting: Initial Posts'},
+        ] },
+      { id:'disc_replies', kind:'number', bucket:'direct', mult:1, div:2,
+        label:'Discussing: Replies', unit:'replies',
+        gate:'Do students reply to others in the course discussions?',
+        prompt:'How many total replies are required in the course discussion activities?',
+        help:'', rate:'30 min each' },
+  ]},
+  { key:'assignments', label:'Assignments', items:[
+      { id:'graded_count', kind:'number', unit:'assignments', rate:'10 min feedback each',
+        label:'Graded Assignments', noHours:true,
+        gate:'Are there graded assignments in the course (not including discussions, quizzes, or exams)?',
+        prompt:'How many graded assignments are in the course?',
+        help:'Used to estimate instructor feedback reading time. Enter the number of distinct graded submissions, not their length.' },
+      { id:'hw_assignments', kind:'number', bucket:'ooc', mult:1, div:60,
+        label:'Homework Assignments', unit:'minutes',
+        gate:'Does the course include homework assignments?',
+        prompt:'How many total minutes are expected for the homework assignments in the course?',
+        help:'This is the sum total of all homework assignments (including hands-on and/or lab-type activities).',
+        rate:'counted 1:1' },
+      { id:'paper_reflective', kind:'number', bucket:'ooc', mult:1, div:1,
+        label:'Paper: Reflective', unit:'pages',
+        gate:'Do students complete reflective writing assignments?',
+        prompt:'What is the total number of pages for the reflective assignments in the course?',
+        help:'This is the sum total of all reflective assignments and should reflect the minimum requirements.',
+        rate:'1 hr/pg' },
+      { id:'paper_analytical', kind:'number', bucket:'ooc', mult:2, div:1,
+        label:'Paper: Analytical', unit:'pages',
+        gate:'Do students complete analytical writing assignments?',
+        prompt:'What is the total number of pages for the analytical assignments in the course?',
+        help:'This is the sum total of all analytical assignments (e.g., case studies or white papers) and should reflect the minimum requirements.',
+        rate:'2 hr/pg' },
+      { id:'paper_synthesizing', kind:'number', bucket:'ooc', mult:4, div:1,
+        label:'Paper: Synthesizing', unit:'pages',
+        gate:'Do students complete synthesizing writing assignments?',
+        prompt:'What is the total number of pages for the synthesizing assignments in the course?',
+        help:'This is the sum total of all synthesizing assignments and should reflect the minimum requirements.',
+        rate:'4 hr/pg' },
+      { id:'paper_culminating', kind:'number', bucket:'ooc', mult:5, div:1,
+        label:'Paper: Culminating', unit:'pages',
+        gate:'Do students complete culminating writing assignments (capstone, thesis, or dissertation)?',
+        prompt:'What is the total number of pages for the culminating assignments in the course?',
+        help:'This is the sum total of all culminating assignments (e.g., capstone, thesis, or dissertation) and should reflect the minimum requirements.',
+        rate:'5 hr/pg' },
+      { id:'instructor_feedback', kind:'feedback', bucket:'direct',
+        label:'Reading: Instructor Feedback', unit:'items', rate:'10 min each',
+        feeds:['graded_count','disc_initial'],   // 10 min per graded assignment + per initial discussion post
+        note:'Auto-calculated: 10 min per graded assignment and per initial discussion post.' },
+  ]},
+  { key:'presentations', label:'Presentations', items:[
+      { id:'pres_deliver', kind:'number', unit:'minutes', rate:'delivery 1:1 + prep',
+        label:'Presenting: Create & Deliver',
+        gate:'Do students create and deliver presentations?',
+        prompt:'How many total minutes are the presentations expected to be for the student?',
+        help:'Counts both delivery (in class) and preparation & practice (out of class, about 30 minutes of prep per minute of final presentation).',
+        splits:[
+          {bucket:'direct', mult:1, div:60, label:'Presenting: Delivery'},
+          {bucket:'ooc',    mult:1, div:2,  label:'Presentation: Preparation & Practice'},
+        ] },
+      { id:'pres_observe', kind:'number', bucket:'direct', mult:1, div:60,
+        label:'Observing: Student Presentations', unit:'minutes',
+        gate:'Will students be expected to view presentations by other students?',
+        prompt:'How many total minutes of presentations will the students be required to view?',
+        help:'', rate:'counted 1:1' },
+  ]},
+  { key:'assessments', label:'Assessments', items:[
+      { id:'assess_kcheck', kind:'number', bucket:'direct', mult:2, div:60,
+        label:'Completing: Knowledge Checks (ungraded)', unit:'questions',
+        gate:'Are there ungraded knowledge checks or self-test quizzes in the course?',
+        prompt:'How many total questions are in the ungraded knowledge checks / self-tests?',
+        help:'', rate:'2 min/question' },
+      { id:'assess_quiz', kind:'number', bucket:'direct', mult:3, div:60,
+        label:'Completing: Lower-stakes Quizzes (graded)', unit:'questions',
+        gate:'Are there lower-stakes graded quizzes in which students recall what they have learned (e.g., module quizzes)?',
+        pre:{ id:'assess_quiz_n', prompt:'How many lower-stakes graded quizzes are there in total?', unit:'quizzes',
+              bucket:'ooc', mult:1, div:1, rate:'1 hr study each', label:'Studying: Lower-stakes Quizzes' },
+        prompt:'How many total questions are in the lower-stakes graded quizzes?',
+        help:'', rate:'3 min/question' },
+      { id:'assess_mid', kind:'number', bucket:'direct', mult:5, div:60,
+        label:'Completing: Medium-stakes Exams (graded)', unit:'questions',
+        gate:'Are there medium-stakes graded exams in which students apply what they have learned (e.g., a unit or module exam)?',
+        pre:{ id:'assess_mid_n', prompt:'How many medium-stakes graded exams are there in total?', unit:'exams',
+              bucket:'ooc', mult:2, div:1, rate:'2 hr study each', label:'Studying: Medium-stakes Exams' },
+        prompt:'How many total questions are in the medium-stakes graded exams?',
+        help:'', rate:'5 min/question' },
+      { id:'assess_exam', kind:'number', bucket:'direct', mult:5, div:60,
+        label:'Completing: Higher-stakes Exams (graded)', unit:'questions',
+        gate:'Are there higher-stakes graded exams in which students apply what they have learned (e.g., a comprehensive mid-term or final exam)?',
+        pre:{ id:'assess_exam_n', prompt:'How many higher-stakes graded exams are there in total?', unit:'exams',
+              bucket:'ooc', mult:3, div:1, rate:'3 hr study each', label:'Studying: Higher-stakes Exams' },
+        prompt:'How many total questions are in the higher-stakes graded exams?',
+        help:'', rate:'5 min/question' },
+  ]},
+  { key:'other', label:'Other Activities', items:[
+      { id:'other_direct', kind:'number', bucket:'direct', mult:1, div:60, unit:'minutes', rate:'counted 1:1',
+        label:'Other Direct Instruction',
+        gate:'Are there instructional activities in the course that were not captured in the values you entered?',
+        desc:{ id:'other_direct_desc', prompt:'Please describe these other instructional activities.', placeholder:'Describe the activities…' },
+        prompt:'Estimate the total number of minutes of these other instructional activities.',
+        help:'Do not double-count minutes already included above.' },
+      { id:'other_ooc', kind:'number', bucket:'ooc', mult:1, div:60, unit:'minutes', rate:'counted 1:1',
+        label:'Other Out-of-Class Work',
+        gate:'Are there learning activities students will complete outside the in-course instructional activities that were not captured in the values you entered?',
+        desc:{ id:'other_ooc_desc', prompt:'Please describe these other out-of-class activities.', placeholder:'Describe the activities…' },
+        prompt:'Estimate the total number of minutes of these other out-of-class activities.',
+        help:'Do not double-count minutes already included above.' },
+  ]},
+];
+const collapsed = {};
+
+/* ---- Tooltip content (hover to preview, click to pin) ----
+   Rate lines reflect what THIS tool actually computes. */
+const TIPS = {
+  read_docs:`<p>Reading announcements, the syllabus, study guides, and any other course-based documents.</p><p class="tiprate">Estimated at 1 hour per module.</p>`,
+  read_pages:`<p>Assigned textbook readings (eBook or hardcopy) and standard academic or scholarly journal articles.</p><p class="tiprate">≈16 pages per hour (about 750 words/page). Online readings without pagination: estimate pages at 600 words/page.</p>`,
+  read_lectures:`<p>Written lecture or lesson content — not audio or video, which is counted under Multimedia.</p><p class="tiprate">30 minutes each.</p>`,
+  mm_instructional:`<p>Instructor-made or curated videos, and audio-only components such as podcasts, that are part of an instructor-made lecture or lesson.</p><p class="tiprate">Counted 1:1 (minutes).</p>`,
+  mm_slides:`<p>PPT-style slide presentation without audio narration, accompanying a lecture or lesson.</p><p class="tiprate">≈20 slides per hour. Do not include slides already shown within a video or podcast counted above.</p>`,
+  mm_supplementary:`<p>Curated videos and audio-only podcasts that are <b>not</b> part of an instructor-made lecture or lesson.</p><p class="tiprate">Counted 1:1 (minutes).</p>`,
+  disc_initial:`<p>Participation in course discussions. Each initial post counts twice: time interacting in the discussion (Direct) and time preparing and drafting the post (Out-of-class).</p><p class="tiprate">1 hour each (discussion) + 1 hour each (drafting). Based on “meets standards” participation.</p>`,
+  disc_replies:`<p>Replies to others in the course discussions.</p><p class="tiprate">30 minutes each. Based on “meets standards” participation.</p>`,
+  hw_assignments:`<p>Take-home hands-on activities, assignments, and labs completed outside of course interaction.</p><p class="tiprate">Estimated completion time, counted 1:1 (minutes).</p>`,
+  paper_reflective:`<p>Reflective writing (e.g., personal reflection on learning), completed outside of course interaction.</p><p class="tiprate">1 hour per page.</p>`,
+  paper_analytical:`<p>Analytical writing such as case studies or white papers, completed outside of course interaction.</p><p class="tiprate">2 hours per page.</p>`,
+  paper_synthesizing:`<p>Writing that synthesizes learning across the course, completed outside of course interaction.</p><p class="tiprate">4 hours per page.</p>`,
+  paper_culminating:`<p>Culminating work such as a capstone, thesis, or dissertation, completed outside of course interaction.</p><p class="tiprate">5 hours per page.</p>`,
+  pres_deliver:`<p>A synchronous presentation the student creates and delivers (not a prerecorded slide deck). Delivery time is Direct; preparation and practice are Out-of-class.</p><p class="tiprate">Delivery 1:1; preparation 30 minutes per minute of final presentation.</p>`,
+  pres_observe:`<p>Time spent watching presentations by other students, asynchronous or synchronous.</p><p class="tiprate">Counted 1:1 (minutes).</p>`,
+  assess_kcheck:`<p>Formative, ungraded learning activity such as a knowledge check or self-test.</p><p class="tiprate">2 minutes per question.</p>`,
+  assess_quiz:`<p>LMS-based, lower-stakes graded quiz (recall). Taking the quiz is Direct; study time is Out-of-class.</p><p class="tiprate">3 minutes per question, plus 1 hour of study per quiz.</p>`,
+  assess_mid:`<p>LMS-based, medium-stakes graded exam that applies learning, such as a unit or module exam. Taking the exam is Direct; study time is Out-of-class.</p><p class="tiprate">5 minutes per question, plus 2 hours of study per exam.</p>`,
+  assess_exam:`<p>LMS-based, higher-stakes graded exam that applies learning, such as a comprehensive midterm or final. Taking the exam is Direct; study time is Out-of-class.</p><p class="tiprate">5 minutes per question, plus 3 hours of study per exam.</p>`,
+  graded_count:`<p>The number of distinct graded submissions the instructor gives feedback on — not discussions, quizzes, or exams. Used only to estimate instructor feedback reading time.</p><p class="tiprate">10 minutes of feedback reading per assignment.</p>`,
+  instructor_feedback:`<p>Time students spend reading instructor feedback on graded work, including discussion participation. Calculated automatically from the number of graded assignments and initial discussion posts you entered.</p><p class="tiprate">10 minutes per graded assignment and per initial discussion post.</p>`,
+  other_direct:`<p>Any other contact &amp; engagement (instructional) activity not captured above. Provide a brief description.</p><p class="tiprate">Counted 1:1 (minutes). Do not double-count time already included above.</p>`,
+  other_ooc:`<p>Any other preparation (out-of-class) activity not captured above. Provide a brief description.</p><p class="tiprate">Counted 1:1 (minutes). Do not double-count time already included above.</p>`,
+};
+function infoIcon(id){ return TIPS[id] ? `<button class="info" type="button" data-tip="${id}" aria-label="More information">i</button>` : ''; }
+
+/* contributions: an item may feed one bucket, or split across two */
+/* find the config item that owns an input id (its own id, or a pre/desc child) */
+function itemOwning(id){ for(const g of GROUPS) for(const it of g.items){ if(it.id===id||(it.pre&&it.pre.id===id)||(it.desc&&it.desc.id===id)) return it; } return null; }
+/* effective numeric value of an input id, respecting its gate */
+function effInput(id){
+  const item = itemOwning(id);
+  if(item && item.gate && state.gates[item.id]!==true) return 0;
+  const v=parseFloat(state.inputs[id]); return isNaN(v)?0:v;
+}
+/* feedback item count: sum of the effective values it feeds on */
+function feedbackCount(it){ return (it.feeds||[]).reduce((s,id)=>s+effInput(id),0); }
+
+function itemContribs(it){
+  if(it.kind==='derived_modules')
+    return [{bucket:it.bucket, hours:(state.modules>0?state.modules*it.perModule:0), label:it.label, src:it.id}];
+  if(it.kind==='feedback')
+    return [{bucket:it.bucket, hours:feedbackCount(it)*10/60, label:it.label, src:it.id}];
+  const off = it.gate && state.gates[it.id]!==true;
+  const numOf = id => { const v=parseFloat(state.inputs[id]); return (off||isNaN(v))?0:v; };
+  const out=[];
+  // a 'pre' count field may carry its own bucket (e.g. study time from # of assessments)
+  if(it.pre && it.pre.bucket){
+    const pq=numOf(it.pre.id);
+    out.push({bucket:it.pre.bucket, hours:pq*(it.pre.mult||1)/(it.pre.div||1), label:it.pre.label||it.label, src:it.pre.id});
+  }
+  const mq=numOf(it.id);
+  if(it.splits) it.splits.forEach(s=>out.push({bucket:s.bucket, hours:mq*(s.mult||1)/(s.div||1), label:s.label||it.label, src:it.id}));
+  else if(it.bucket) out.push({bucket:it.bucket, hours:mq*(it.mult||1)/(it.div||1), label:it.label, src:it.id}); // no bucket (e.g. graded count) contributes no hours itself
+  return out;
+}
+function itemHours(it){ return itemContribs(it).reduce((s,c)=>s+c.hours,0); }
+/* flat, single-bucket lines for the review page */
+function reviewLines(){
+  const out=[];
+  GROUPS.forEach(g=>g.items.forEach(it=>{
+    itemContribs(it).forEach(c=>{
+      if(c.hours>0 || it.kind==='derived_modules'){
+        let detail;
+        if(it.kind==='derived_modules') detail=it.note;
+        else if(it.kind==='feedback') detail=`${feedbackCount(it)} ${it.unit} · ${it.rate}`;
+        else if(it.pre && c.src===it.pre.id) detail=`${state.inputs[it.pre.id]||0} ${it.pre.unit} · ${it.pre.rate}`;
+        else detail=`${state.inputs[it.id]||0} ${it.unit} · ${it.rate}`;
+        const dtxt = it.desc ? String(state.inputs[it.desc.id]||'').trim() : '';
+        if(dtxt && c.src===it.id) detail = `“${dtxt}” · ${detail}`;
+        out.push({ label:c.label, bucket:c.bucket, hours:c.hours, detail });
+      }
+    });
+  }));
+  return out;
+}
+/* every Yes/No gate and the answer given, for the report */
+function gateSelections(){
+  const out=[];
+  GROUPS.forEach(g=>g.items.forEach(it=>{ if(it.gate){ const v=state.gates[it.id];
+    out.push({ q:it.gate, ans: v===true?'Yes':v===false?'No':'Not answered' }); } }));
+  return out;
+}
+
+/* ============================================================
+   STEPS
+   ============================================================ */
+function steps(){ return [{type:'intake'},{type:'activities'},{type:'review'}]; }
+let cur = 0;
+let modulesAck = false;
+const fmt = n => (Math.round(n*10)/10).toFixed(1);
+
+function goStep(n){ cur=Math.max(0,n); render(); window.scrollTo(0,0); }
+function render(){
+  const S=steps(); cur=Math.max(0,Math.min(cur,S.length-1));
+  const step=S[cur], card=document.getElementById('stepCard');
+  document.getElementById('progress').innerHTML =
+    S.map((_,i)=>`<span class="pstep ${i<cur?'done':i===cur?'now':''}"></span>`).join('');
+  const labelOf=i=>`Step ${i+1} of ${S.length}`;
+
+  if(step.type==='intake'){
+    card.innerHTML = `
+      <div class="eyebrow">${labelOf(cur)}</div>
+      <h2>Course details</h2>
+      <p class="lede">Please fill out this tool as accurately as possible. You can save your work to an Excel file and reopen it later to finish or revise it. The saved file includes a formatted Report sheet you can submit.</p>
+      <div class="fields">
+        <div class="field wide"><label for="f_id">Course ID <span class="req">*</span></label>
+          <input id="f_id" type="text" placeholder="e.g. BIOL 101" autocomplete="off" value="${esc(state.course.id)}">
+          <div class="fhint" id="idHint">Format: letters, a space, then the number — e.g., BIOL 101.</div></div>
+        <div class="field"><label for="f_credits">Credit Hours <span class="req">*</span></label>
+          <input id="f_credits" type="number" min="0" step="0.5" inputmode="decimal" placeholder="e.g. 3" value="${state.course.credits??''}"></div>
+        <div class="field"><label for="f_mods">Number of Modules <span class="req">*</span></label>
+          <input id="f_mods" type="number" min="1" max="30" step="1" inputmode="numeric" placeholder="e.g. 8" value="${state.modules??''}"></div>
+        <div class="field"><label for="f_date">Date Completed <span class="req">*</span></label>
+          <input id="f_date" type="date" value="${esc(state.course.date)}"></div>
+        <div class="field"><label for="f_by">Completed By <span class="req">*</span></label>
+          <input id="f_by" type="text" placeholder="Your name" autocomplete="off" value="${esc(state.course.by)}"></div>
+      </div>
+      <div class="modwarn" id="modWarn" hidden>
+        <span>This course has <b id="modWarnN">0</b> modules. More than 10 is unusual — please confirm this is correct.</span>
+        <label class="modack"><input type="checkbox" id="modAck" ${modulesAck?'checked':''}> Yes, that's correct</label>
+      </div>
+      <p class="resume">Resuming a saved estimate? <button type="button" class="linkbtn" id="openBtn2">Open a saved file</button> to pick up where you left off.</p>
+      <div class="nav"><button class="btn" id="nextBtn" type="button">Continue →</button></div>`;
+    const sync=()=>{
+      state.course.id=normalizeCourseId(val('f_id'));
+      state.course.credits=num('f_credits');
+      state.modules=intOrNull('f_mods'); state.course.date=val('f_date'); state.course.by=val('f_by');
+      const idOK=isValidCourseId(state.course.id);
+      const h=document.getElementById('idHint'), rawId=val('f_id').trim();
+      if(rawId && !idOK){ h.classList.add('err'); h.textContent='Use letters, a space, then the number — e.g., BIOL 101.'; }
+      else { h.classList.remove('err'); h.textContent='Format: letters, a space, then the number — e.g., BIOL 101.'; }
+      const mw=document.getElementById('modWarn'), ackEl=document.getElementById('modAck');
+      if(state.modules && state.modules>10){ mw.hidden=false; document.getElementById('modWarnN').textContent=state.modules; modulesAck=!!ackEl.checked; }
+      else { mw.hidden=true; if(ackEl) ackEl.checked=false; modulesAck=false; }
+      const modOK = state.modules>0 && (state.modules<=10 || modulesAck);
+      document.getElementById('nextBtn').disabled =
+        !(idOK && state.course.credits>0 && modOK && state.course.date && state.course.by.trim());
+      recompute();
+    };
+    card.addEventListener('input',sync);
+    document.getElementById('f_id').addEventListener('blur',()=>{ document.getElementById('f_id').value=state.course.id; sync(); });
+    sync();
+    document.getElementById('nextBtn').onclick=()=>goStep(cur+1);
+    document.getElementById('openBtn2').onclick=()=>document.getElementById('fileInput').click();
+  }
+
+  else if(step.type==='activities'){
+    card.innerHTML = `
+      <div class="eyebrow">${labelOf(cur)}</div>
+      <h2>Activities</h2>
+      <p class="lede">Estimate workload by activity type. <span class="zero">Wherever an activity asks for time, enter it in minutes.</span> Each entry is tagged <b>Direct</b> (in-class) or <b>Out-of-class</b> and flows into the running totals.</p>
+      <div class="groups">${GROUPS.map(renderGroup).join('')}</div>
+      <div class="nav">
+        <button class="btn secondary" id="backBtn" type="button">← Back</button>
+        <button class="btn" id="nextBtn" type="button">Continue →</button>
+      </div>`;
+    card.querySelectorAll('.ghead').forEach(h=>h.onclick=()=>{ const k=h.dataset.g; collapsed[k]=!collapsed[k]; render(); });
+    card.querySelectorAll('.ynbtn').forEach(b=>b.onclick=()=>{ state.gates[b.dataset.gate]=(b.dataset.val==='yes'); render(); });
+    card.addEventListener('input', e=>{
+      const el=e.target;
+      if(el.classList.contains('pinput')){ state.inputs[el.dataset.id]=el.value; updateReadouts(); }
+    });
+    document.getElementById('backBtn').onclick=()=>goStep(cur-1);
+    document.getElementById('nextBtn').onclick=()=>goStep(cur+1);
+    updateReadouts();
+  }
+
+  else if(step.type==='review'){
+    const items=reviewLines();
+    const rows=items.length ? items.map(a=>`
+      <div class="lineitem">
+        <span class="bk ${a.bucket}">${a.bucket==='direct'?'Direct':'Out-of-class'}</span>
+        <span class="nm">${a.label}<small>${a.detail}</small></span>
+        <span class="amt tnum">${fmt(a.hours)}</span>
+      </div>`).join('') : `<div class="placeholder"><span class="d"></span>No activities estimated yet.</div>`;
+    card.innerHTML = `
+      <div class="eyebrow">${labelOf(cur)}</div>
+      <h2>Review estimate</h2>
+      <p class="lede">Workload estimate for <b>${esc(state.course.id)||'this course'}</b>${state.modules?`, ${state.modules} module${state.modules>1?'s':''}`:''}.</p>
+      <div class="groups"><div class="gbody" style="padding:0; gap:8px">${rows}</div></div>
+      <h3 class="selhead">Your selections</h3>
+      <div class="sellist">${gateSelections().map(s=>{const c=s.ans==='Yes'?'yes':s.ans==='No'?'no':'na';return `<div class="selrow"><span class="q">${s.q}</span><span class="sa ${c}">${s.ans}</span></div>`;}).join('')}</div>
+      <p class="savehint"><b>Save file</b> downloads an Excel workbook with a ready-to-submit <b>Report</b> sheet plus a working sheet you can edit. Reopen that file anytime to revise.</p>
+      <div class="nav">
+        <button class="btn secondary" id="backBtn" type="button">← Back</button>
+        <button class="btn" id="saveBtn2" type="button">Save file</button>
+        <button class="btn ghost" id="restart2" type="button">Clear form</button>
+      </div>`;
+    document.getElementById('backBtn').onclick=()=>goStep(cur-1);
+    document.getElementById('saveBtn2').onclick=downloadFile;
+    document.getElementById('restart2').onclick=restart;
+  }
+
+  recompute();
+}
+
+function renderGroup(g){
+  let body;
+  if(g.items.length===0){
+    body = `<div class="placeholder"><span class="d"></span>Prompts for ${g.label} coming next.</div>`;
+  } else {
+    body = g.items.map(it=>{
+      if(it.kind==='derived_modules' || it.kind==='feedback'){
+        return `<div class="derived">
+          <span class="bk direct">Direct</span>
+          <span class="nm">${it.label} ${infoIcon(it.id)}<small>${it.note}</small></span>
+          <span class="amt tnum" data-hrs="${it.id}">${fmt(itemHours(it))}</span></div>`;
+      }
+      // 'number' (optionally gated by a Yes/No; single bucket or split across two)
+      const gated = !!it.gate;
+      const hasHours = !!(it.bucket || it.splits || (it.pre&&it.pre.bucket));
+      const showInput = !gated || state.gates[it.id]===true;
+      const gateHtml = gated ? `<div class="gaterow">
+          <span class="gq">${it.gate} ${infoIcon(it.id)}</span>
+          <div class="yn">
+            <button type="button" class="ynbtn ${state.gates[it.id]===true?'on':''}" data-gate="${it.id}" data-val="yes">Yes</button>
+            <button type="button" class="ynbtn ${state.gates[it.id]===false?'on':''}" data-gate="${it.id}" data-val="no">No</button>
+          </div></div>` : '';
+      const tags = !hasHours ? ''
+        : it.splits
+        ? it.splits.map(s=>`<span class="bk ${s.bucket}">${s.bucket==='direct'?'Direct':'Out-of-class'}</span>`).join('')
+        : `<span class="bk ${it.bucket}">${it.bucket==='direct'?'Direct':'Out-of-class'}</span>`;
+      const breakdown = it.splits
+        ? `<div class="phelp breakdown">= <b class="tnum" data-split="${it.id}:direct">0.0</b> hr Direct&nbsp;·&nbsp;<b class="tnum" data-split="${it.id}:ooc">0.0</b> hr Out-of-class</div>`
+        : '';
+      const preHtml = it.pre ? (it.pre.bucket ? `
+        <div class="qrow"><span class="q">${it.pre.prompt}</span><span class="tags"><span class="bk ${it.pre.bucket}">${it.pre.bucket==='direct'?'Direct':'Out-of-class'}</span></span></div>
+        <div class="inrow">
+          <input class="pinput" type="number" min="0" step="1" inputmode="numeric" placeholder="0"
+                 data-id="${it.pre.id}" value="${esc(state.inputs[it.pre.id]??'')}" aria-label="${esc(it.pre.prompt)}">
+          <span class="unit">${it.pre.unit} · ${it.pre.rate}</span>
+          <span class="ans"><span class="amt tnum" data-hrs="${it.pre.id}">0.0</span> hrs</span>
+        </div>` : `
+        <div class="qrow pre"><span class="q">${it.pre.prompt}</span></div>
+        <div class="inrow">
+          <input class="pinput" type="number" min="0" step="1" inputmode="numeric" placeholder="0"
+                 data-id="${it.pre.id}" value="${esc(state.inputs[it.pre.id]??'')}" aria-label="${esc(it.pre.prompt)}">
+          <span class="unit">${it.pre.unit}</span>
+        </div>`) : '';
+      const descHtml = it.desc ? `
+        <div class="qrow"><span class="q">${it.desc.prompt}</span></div>
+        <textarea class="pinput descbox" rows="2" data-id="${it.desc.id}" placeholder="${esc(it.desc.placeholder||'')}" aria-label="${esc(it.desc.prompt)}">${esc(state.inputs[it.desc.id]??'')}</textarea>` : '';
+      const inputHtml = showInput ? `
+        ${preHtml}${descHtml}
+        <div class="qrow"><span class="q">${it.prompt}${gated?'':' '+infoIcon(it.id)}</span><span class="tags">${tags}</span></div>
+        ${it.help?`<div class="phelp">${it.help}</div>`:''}
+        <div class="inrow">
+          <input class="pinput" type="number" min="0" step="any" inputmode="decimal" placeholder="0"
+                 data-id="${it.id}" value="${esc(state.inputs[it.id]??'')}" aria-label="${esc(it.label)}">
+          <span class="unit">${it.unit} · ${it.rate}</span>
+          ${hasHours?`<span class="ans"><span class="amt tnum" data-hrs="${it.id}">0.0</span> hrs</span>`:''}
+        </div>
+        ${breakdown}` : '';
+      return `<div class="prompt ${gated?'gated':''}">${gateHtml}${inputHtml}</div>`;
+    }).join('');
+  }
+  const sub = g.items.reduce((s,it)=>s+itemHours(it),0);
+  const sumHtml = g.items.length? `<span class="gsum">Subtotal <b class="tnum" data-gsub="${g.key}">${fmt(sub)}</b> hrs</span>` : '';
+  const isC=!!collapsed[g.key];
+  return `<div class="group ${isC?'collapsed':''}">
+      <button class="ghead" type="button" data-g="${g.key}">
+        <span class="gname">${g.label}</span>${sumHtml}
+        <span class="gcaret">▾</span>
+      </button>
+      <div class="gbody">${body}</div>
+    </div>`;
+}
+
+/* update prompt hours + group subtotals in place (keeps input focus) */
+function updateReadouts(){
+  GROUPS.forEach(g=>{
+    let sub=0;
+    g.items.forEach(it=>{
+      const contribs=itemContribs(it);
+      const bySrc={};
+      contribs.forEach(c=>{ sub+=c.hours; bySrc[c.src]=(bySrc[c.src]||0)+c.hours; });
+      Object.entries(bySrc).forEach(([src,h])=>{ const el=document.querySelector(`[data-hrs="${src}"]`); if(el) el.textContent=fmt(h); });
+      if(it.splits) contribs.forEach(c=>{ if(c.src===it.id){ const se=document.querySelector(`[data-split="${it.id}:${c.bucket}"]`); if(se) se.textContent=fmt(c.hours); } });
+    });
+    const se=document.querySelector(`[data-gsub="${g.key}"]`); if(se) se.textContent=fmt(sub);
+  });
+  recompute();
+}
+
+/* ============================================================
+   COMPUTE + VALIDATE
+   ============================================================ */
+function recompute(){
+  let direct=0, ooc=0;
+  GROUPS.forEach(g=>g.items.forEach(it=>itemContribs(it).forEach(c=>{ if(c.bucket==='direct') direct+=c.hours; else ooc+=c.hours; })));
+  const total=direct+ooc, che=total/HOURS_PER_CREDIT;
+  document.getElementById('sumDirect').textContent=fmt(direct);
+  document.getElementById('sumOoc').textContent=fmt(ooc);
+  document.getElementById('sumTotal').textContent=fmt(total);
+  document.getElementById('cheVal').textContent=fmt(che);
+
+  const credit=state.course.credits;
+  const pill=document.getElementById('chePill'), txt=document.getElementById('chePillText'), rb=document.getElementById('cheRange');
+  pill.classList.remove('good','warn','none');
+  if(!credit||credit<=0){ pill.classList.add('none'); txt.textContent='Awaiting credit hours'; rb.hidden=true; }
+  else{
+    const lo=credit-BAND,hi=credit+BAND,diff=che-credit;
+    if(che>=lo&&che<=hi){ pill.classList.add('good'); txt.textContent='Within expected range'; }
+    else{ pill.classList.add('warn'); txt.textContent=diff>0?'Above expected range':'Below expected range'; }
+    rb.hidden=false;
+    document.getElementById('rangeTarget').textContent=fmt(credit);
+    document.getElementById('rangeBand').textContent=`${fmt(lo)} – ${fmt(hi)}`;
+  }
+}
+
+/* helpers */
+function val(id){const e=document.getElementById(id);return e?e.value:'';}
+function num(id){const v=parseFloat(val(id));return isNaN(v)?null:v;}
+function intOrNull(id){const v=parseInt(val(id),10);return isNaN(v)||v<1?null:v;}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+/* date helpers: ISO string <-> JS Date (noon, to dodge timezone/DST shifts) */
+function isoToDate(s){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(s||'')); return m? new Date(+m[1],+m[2]-1,+m[3],12,0,0) : null; }
+function dateToISO(v){ if(!v) return ''; if(v instanceof Date){ const y=v.getFullYear(),mo=String(v.getMonth()+1).padStart(2,'0'),d=String(v.getDate()).padStart(2,'0'); return `${y}-${mo}-${d}`; } const m=/^\d{4}-\d{2}-\d{2}/.exec(String(v)); return m?m[0]:String(v).slice(0,10); }
+function normalizeCourseId(raw){
+  const s=String(raw||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
+  const m=s.match(/^([A-Z]+)(\d.*)$/);
+  return m ? `${m[1]} ${m[2]}` : String(raw||'').toUpperCase().replace(/\s+/g,' ').trim();
+}
+function isValidCourseId(id){ return /^[A-Z]+ \d+[A-Z]*$/.test(id); }
+function restart(){ state.course={id:'',credits:null,date:todayISO,by:''}; state.modules=null; state.inputs={}; state.gates={}; modulesAck=false; cur=0; render(); window.scrollTo(0,0); }
+
+/* ============================================================
+   SAVE / OPEN  (Excel .xlsx carrier — editable inputs, locked
+   elsewhere, protected with "unlock", live formulas, round-trip)
+   ============================================================ */
+let toastTimer;
+function toast(msg,err){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.toggle('err',!!err); t.hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.hidden=true;},2800); }
+
+/* flat list of every input, with how it maps to Direct / Out-of-class hours */
+function enumerateInputs(){
+  const rows=[];
+  GROUPS.forEach(g=>g.items.forEach(it=>{
+    if(it.kind==='derived_modules'){
+      rows.push({group:g.label,id:it.id,label:it.label,unit:'modules',rate:`${it.perModule} hr/module`,
+        editable:false,isText:false,
+        direct:it.bucket==='direct'?{m:it.perModule,d:1}:null, ooc:it.bucket==='ooc'?{m:it.perModule,d:1}:null,
+        get:()=>state.modules||0});
+      return;
+    }
+    if(it.kind==='feedback'){
+      rows.push({group:g.label,id:it.id,label:it.label,unit:it.unit,rate:it.rate,
+        editable:false,isText:false, feedbackFeeds:it.feeds,
+        direct:it.bucket==='direct'?{m:10,d:60}:null, ooc:it.bucket==='ooc'?{m:10,d:60}:null,
+        get:()=>feedbackCount(it)});
+      return;
+    }
+    if(it.pre && it.pre.bucket){
+      rows.push({group:g.label,id:it.pre.id,label:it.pre.label,unit:it.pre.unit,rate:it.pre.rate,
+        editable:true,isText:false,
+        direct:it.pre.bucket==='direct'?{m:it.pre.mult,d:it.pre.div}:null,
+        ooc:it.pre.bucket==='ooc'?{m:it.pre.mult,d:it.pre.div}:null,
+        get:()=>state.inputs[it.pre.id]});
+    }
+    let direct=null,ooc=null;
+    if(it.splits){ it.splits.forEach(s=>{ if(s.bucket==='direct')direct={m:s.mult,d:s.div}; else ooc={m:s.mult,d:s.div}; }); }
+    else if(it.bucket==='direct') direct={m:it.mult,d:it.div};
+    else if(it.bucket==='ooc') ooc={m:it.mult,d:it.div};
+    // else: no bucket (e.g. graded-assignment count) — editable input, contributes no hours of its own
+    rows.push({group:g.label,id:it.id,label:it.label,unit:it.unit,rate:it.rate,editable:true,isText:false,direct,ooc,get:()=>state.inputs[it.id]});
+    if(it.desc) rows.push({group:g.label,id:it.desc.id,label:it.desc.prompt,unit:'(description)',rate:'',editable:true,isText:true,direct:null,ooc:null,get:()=>state.inputs[it.desc.id]});
+  }));
+  return rows;
+}
+
+async function buildWorkbook(){
+  const wb=new ExcelJS.Workbook(); wb.creator='Course Workload Estimator';
+  const rep=wb.addWorksheet('Report',{views:[{showGridLines:false}]});       // first sheet
+  const ws=wb.addWorksheet('Workload Estimator',{views:[{showGridLines:false}]}); // second sheet
+  const map=[]; const cellFor={}; const widths=[20,42,12,18,16,13,15];
+  widths.forEach((w,i)=>ws.getColumn(i+1).width=w);
+  const INK='FF1B2430',MUT='FF5B6675',LINE='FFE1E5EC',STRONG='FFCFD5DF',HEAD='FFEEF1F5',BAND='FFF3F5F8',ACC='FF2F5D84';
+  let r=1;
+  ws.mergeCells(r,1,r,7); const t=ws.getCell(r,1); t.value='Course Workload Estimator';
+  t.font={size:16,bold:true,color:{argb:ACC}}; ws.getRow(r).height=24; r+=2;
+
+  ws.getCell(r,1).value='COURSE DETAILS'; ws.getCell(r,1).font={bold:true,size:10,color:{argb:MUT}}; r++;
+  const meta=[['course_id','Course ID',state.course.id,'text'],['credits','Credit Hours',state.course.credits,'num'],
+              ['modules','Number of Modules',state.modules,'num'],['date','Date Completed',state.course.date,'date'],
+              ['by','Completed By',state.course.by,'text']];
+  const metaAddr={};
+  meta.forEach(([k,label,val,type])=>{
+    ws.getCell(r,1).value=label; ws.getCell(r,1).font={bold:true,color:{argb:MUT}};
+    const c=ws.getCell(r,2); c.protection={locked:false};
+    if(type==='date'){ const dt=isoToDate(val); c.value=dt||null; if(dt) c.numFmt='mmmm dd, yyyy'; }
+    else { c.value=(val===undefined?null:(val===null&&type==='num'?null:val)); if(type==='num')c.numFmt='0'; } // credit hours & modules are whole numbers
+    c.border={bottom:{style:'thin',color:{argb:STRONG}}}; c.alignment={horizontal:'left'}; // all course details left-aligned
+    metaAddr[k]=c.address; map.push({key:'meta:'+k,addr:c.address}); r++;
+  });
+  r++;
+
+  ['Group','Activity','Value','Unit','Rate','Direct hrs','Out-of-class hrs'].forEach((h,i)=>{
+    const c=ws.getCell(r,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:MUT}};
+    c.fill={type:'pattern',pattern:'solid',fgColor:{argb:HEAD}}; c.alignment={horizontal:i>=2?'center':'left'};
+    c.border={bottom:{style:'thin',color:{argb:STRONG}}};
+  }); r++;
+
+  const rows=enumerateInputs(); const hoursFirst=r; let lastGroup=''; const inputAddr={};
+  rows.forEach(row=>{
+    if(row.group!==lastGroup){ ws.mergeCells(r,1,r,7); const gc=ws.getCell(r,1); gc.value=row.group;
+      gc.font={bold:true,color:{argb:INK}}; gc.fill={type:'pattern',pattern:'solid',fgColor:{argb:BAND}}; lastGroup=row.group; r++; }
+    ws.getCell(r,2).value=row.label;
+    const vc=ws.getCell(r,3); const raw=row.get();
+    if(row.feedbackFeeds){
+      // live formula: sum of the fed input cells (graded assignments + initial posts)
+      const refs=row.feedbackFeeds.map(id=>inputAddr[id]).filter(Boolean);
+      vc.value = refs.length ? {formula:refs.join('+')} : 0; vc.numFmt='0.0';
+    } else if(row.isText){ vc.value=raw||''; } else { vc.value=(raw===''||raw==null)?null:Number(raw); vc.numFmt='0.0'; }
+    vc.alignment={horizontal:'center'};
+    if(row.editable){ vc.protection={locked:false}; vc.border={top:{style:'thin',color:{argb:STRONG}},left:{style:'thin',color:{argb:STRONG}},right:{style:'thin',color:{argb:STRONG}},bottom:{style:'thin',color:{argb:STRONG}}}; inputAddr[row.id]=vc.address; }
+    const u=ws.getCell(r,4); u.value=row.unit; u.font={color:{argb:MUT}};
+    const ra=ws.getCell(r,5); ra.value=row.rate; ra.font={color:{argb:MUT}};
+    if(row.direct){ const f=ws.getCell(r,6); f.value={formula:`${vc.address}*${row.direct.m}/${row.direct.d}`}; f.numFmt='0.0'; f.alignment={horizontal:'right'}; cellFor[row.id+':direct']=`F${r}`; }
+    if(row.ooc){ const f=ws.getCell(r,7); f.value={formula:`${vc.address}*${row.ooc.m}/${row.ooc.d}`}; f.numFmt='0.0'; f.alignment={horizontal:'right'}; cellFor[row.id+':ooc']=`G${r}`; }
+    if(row.editable) map.push({key:(row.isText?'txt:':'in:')+row.id, addr:vc.address});
+    r++;
+  });
+  const hoursLast=r-1; r++;
+
+  const labelCell=(lab,bold,color)=>{ const c=ws.getCell(r,5); c.value=lab; c.alignment={horizontal:'right'}; c.font={bold:!!bold,color:{argb:color||MUT}}; };
+  const dTot=ws.getCell(r,6); labelCell('Direct Instruction'); dTot.value={formula:`SUM(F${hoursFirst}:F${hoursLast})`}; dTot.numFmt='0.0'; dTot.alignment={horizontal:'right'}; r++;
+  const oTot=ws.getCell(r,6); labelCell('Out-of-Class Work'); oTot.value={formula:`SUM(G${hoursFirst}:G${hoursLast})`}; oTot.numFmt='0.0'; oTot.alignment={horizontal:'right'}; r++;
+  const grand=ws.getCell(r,6); labelCell('Total Hours',true,INK); grand.value={formula:`${dTot.address}+${oTot.address}`}; grand.numFmt='0.0'; grand.font={bold:true}; grand.alignment={horizontal:'right'}; r++;
+  const che=ws.getCell(r,6); labelCell('Credit-Hour Equivalent',true,ACC); che.value={formula:`${grand.address}/30`}; che.numFmt='0.00'; che.font={bold:true,color:{argb:ACC}}; che.alignment={horizontal:'right'}; r+=2;
+
+  const cr=metaAddr['credits'];
+  labelCell('Expected (credit hours)'); const eC=ws.getCell(r,6); eC.value={formula:cr}; eC.numFmt='0.0'; eC.alignment={horizontal:'right'}; r++;
+  labelCell('Acceptable range'); const bC=ws.getCell(r,6); bC.value={formula:`TEXT(${cr}-0.4,"0.0")&" - "&TEXT(${cr}+0.4,"0.0")`}; bC.alignment={horizontal:'right'}; r++;
+
+  /* ----- Report sheet (created above as first sheet): presentation-ready, read-only, live from the working sheet ----- */
+  rep.getColumn(1).width=54; rep.getColumn(2).width=16; rep.getColumn(3).width=12;
+  const WS="'Workload Estimator'"; let R=1;
+  rep.mergeCells(R,1,R,3); const rt=rep.getCell(R,1); rt.value='Course Workload Estimate'; rt.font={size:16,bold:true,color:{argb:ACC}}; rep.getRow(R).height=24; R+=2;
+  const detail=(lab,ref,numFmt)=>{ rep.getCell(R,1).value=lab; rep.getCell(R,1).font={bold:true,color:{argb:MUT}}; const c=rep.getCell(R,2); c.value={formula:`${WS}!${ref}`}; if(numFmt){ c.numFmt=numFmt; c.alignment={horizontal:'left'}; } R++; };
+  detail('Course ID',metaAddr.course_id,null);
+  detail('Credit Hours',metaAddr.credits,'0');       // whole number, left-aligned
+  detail('Number of Modules',metaAddr.modules,'0');  // whole number, left-aligned
+  detail('Date Completed',metaAddr.date,'mmmm dd, yyyy');
+  detail('Completed By',metaAddr.by,null); R++;
+  ['Activity','Type','Hours'].forEach((h,i)=>{ const c=rep.getCell(R,i+1); c.value=h; c.font={bold:true,size:10,color:{argb:MUT}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:HEAD}}; c.alignment={horizontal:i===2?'right':'left'}; c.border={bottom:{style:'thin',color:{argb:STRONG}}}; }); R++;
+  GROUPS.forEach(g=>g.items.forEach(it=>{
+    itemContribs(it).forEach(c=>{
+      if(c.hours>0 || it.kind==='derived_modules'){
+        const cell=cellFor[c.src+':'+c.bucket];
+        const dtxt= it.desc? String(state.inputs[it.desc.id]||'').trim():'';
+        const a=rep.getCell(R,1); a.value=(dtxt && c.src===it.id)?`${c.label}\n“${dtxt}”`:c.label; a.alignment={wrapText:true,vertical:'top'}; a.border={bottom:{style:'hair',color:{argb:LINE}}};
+        const tc=rep.getCell(R,2); tc.value=c.bucket==='direct'?'Direct':'Out-of-class'; tc.font={color:{argb:MUT}}; tc.alignment={vertical:'top'};
+        const hc=rep.getCell(R,3); hc.value= cell?{formula:`${WS}!${cell}`}:(Math.round(c.hours*10)/10); hc.numFmt='0.0'; hc.alignment={horizontal:'right',vertical:'top'};
+        R++;
+      }
+    });
+  })); R++;
+  const rtot=(lab,ref,fmtS,bold,color,emph)=>{ const l=rep.getCell(R,1); l.value=lab; l.alignment={horizontal:'right',vertical:'middle'}; l.font={bold:!!bold||!!emph,size:emph?13:11,color:{argb:color||MUT}}; rep.mergeCells(R,1,R,2); const c=rep.getCell(R,3); c.value={formula:`${WS}!${ref}`}; c.numFmt=fmtS||'0.0'; c.font={bold:!!bold||!!emph,size:emph?14:11,color:{argb:color||INK}}; c.alignment={horizontal:'right',vertical:'middle'};
+    if(emph){ const fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE7EEF5'}}; const top={top:{style:'medium',color:{argb:ACC}}}; l.fill=fill; c.fill=fill; l.border=top; c.border=top; rep.getRow(R).height=22; } R++; };
+  rtot('Direct Instruction',dTot.address); rtot('Out-of-Class Work',oTot.address);
+  rtot('Total Hours',grand.address,'0.0',true,INK); rtot('Credit-Hour Equivalent',che.address,'0.0',false,ACC,true);
+  rtot('Expected (credit hours)',cr);
+  { const l=rep.getCell(R,1); l.value='Acceptable range'; l.alignment={horizontal:'right'}; l.font={color:{argb:MUT}}; rep.mergeCells(R,1,R,2); const c=rep.getCell(R,3); c.value={formula:`TEXT(${WS}!${cr}-0.4,"0.0")&" - "&TEXT(${WS}!${cr}+0.4,"0.0")`}; c.alignment={horizontal:'right'}; R++; } R++;
+  rep.getCell(R,1).value='Selections'; rep.getCell(R,1).font={bold:true,size:12,color:{argb:INK}}; R++;
+  gateSelections().forEach(s=>{ const q=rep.getCell(R,1); q.value=s.q; q.alignment={wrapText:true,vertical:'top'}; q.border={bottom:{style:'hair',color:{argb:LINE}}}; rep.mergeCells(R,1,R,2); const a=rep.getCell(R,3); a.value=s.ans; a.font={bold:true,color:{argb:s.ans==='Yes'?'FF2E7D5B':(s.ans==='No'?MUT:'FF9C6A14')}}; a.alignment={horizontal:'right',vertical:'top'}; R++; });
+  await rep.protect('unlock',{selectLockedCells:true,selectUnlockedCells:true});
+
+  const hid=wb.addWorksheet('_cwe',{state:'veryHidden'});
+  hid.getCell('A1').value='CWE'; hid.getCell('B1').value=1; let hr=2;
+  map.forEach(m=>{ hid.getCell('A'+hr).value=m.key; hid.getCell('B'+hr).value=m.addr; hr++; });
+  Object.entries(state.gates).forEach(([id,v])=>{ hid.getCell('A'+hr).value='gate:'+id; hid.getCell('C'+hr).value=!!v; hr++; });
+
+  await ws.protect('unlock',{selectLockedCells:true,selectUnlockedCells:true,formatColumns:false,formatRows:false,insertRows:false,deleteRows:false});
+  wb.views=[{activeTab:0}]; // open to the Report sheet (now first)
+  return wb;
+}
+
+async function downloadFile(){
+  try{
+    const wb=await buildWorkbook(); const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const name=(state.course.id?state.course.id.replace(/[^\w.-]+/g,'_'):'course')+'_workload.xlsx';
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
+    toast('Saved '+name);
+  }catch(e){ toast('Could not save: '+e.message,true); }
+}
+
+async function restoreFromFile(file){
+  try{
+    const buf=await file.arrayBuffer(); const wb=new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+    const hid=wb.getWorksheet('_cwe'), ws=wb.getWorksheet('Workload Estimator');
+    if(!hid||!ws||String(hid.getCell('A1').value)!=='CWE') throw new Error('not a Course Workload Estimator file');
+    state.course={id:'',credits:null,date:todayISO,by:''}; state.modules=null; state.inputs={}; state.gates={};
+    const cellVal=addr=>{ let v=ws.getCell(addr).value; if(v instanceof Date) return v; if(v&&typeof v==='object'){ v=('result'in v)?v.result:(v.text!==undefined?v.text:(Array.isArray(v.richText)?v.richText.map(x=>x.text).join(''):null)); } return v; };
+    let rr=2;
+    while(true){
+      const key=hid.getCell('A'+rr).value; if(key==null||key==='') break;
+      const addr=hid.getCell('B'+rr).value, cval=hid.getCell('C'+rr).value, k=String(key);
+      if(k.startsWith('gate:')) state.gates[k.slice(5)]=(cval===true||cval==='true');
+      else if(addr){
+        const raw=cellVal(String(addr));
+        if(k.startsWith('meta:')){ const f=k.slice(5);
+          if(f==='course_id') state.course.id=raw?String(raw):'';
+          else if(f==='credits') state.course.credits=(raw===''||raw==null)?null:Number(raw);
+          else if(f==='modules') state.modules=(raw===''||raw==null)?null:parseInt(raw,10);
+          else if(f==='date') state.course.date=dateToISO(raw);
+          else if(f==='by') state.course.by=raw?String(raw):'';
+        } else if(k.startsWith('in:')) state.inputs[k.slice(3)]=(raw===''||raw==null)?'':String(Number(raw));
+        else if(k.startsWith('txt:')) state.inputs[k.slice(4)]=raw?String(raw):'';
+      }
+      rr++;
+    }
+    GROUPS.forEach(g=>g.items.forEach(it=>{ if(it.gate){ const v=parseFloat(state.inputs[it.id]); const pv=it.pre?parseFloat(state.inputs[it.pre.id]):NaN; if(v>0||pv>0) state.gates[it.id]=true; } }));
+    state.course.id=normalizeCourseId(state.course.id);
+    modulesAck = state.modules>10;
+    cur=0; render(); window.scrollTo(0,0); toast('Loaded '+file.name);
+  }catch(e){ toast('Could not open file: '+e.message,true); }
+}
+
+/* ---- Theme: System / Light / Dark (persisted per browser) ---- */
+function applyTheme(choice){
+  const root=document.documentElement;
+  if(choice==='light'||choice==='dark') root.setAttribute('data-theme',choice);
+  else root.removeAttribute('data-theme'); // system
+  document.querySelectorAll('.segbtn').forEach(b=>b.classList.toggle('on', b.dataset.themeChoice===choice));
+  try{ localStorage.setItem('cwe-theme',choice); }catch(e){}
+}
+(function initTheme(){
+  let saved='system'; try{ saved=localStorage.getItem('cwe-theme')||'system'; }catch(e){}
+  applyTheme(saved);
+  document.querySelectorAll('.segbtn').forEach(b=>b.onclick=()=>applyTheme(b.dataset.themeChoice));
+})();
+
+/* wire persistent controls */
+document.getElementById('restartBtn').onclick=restart;
+document.getElementById('saveBtn').onclick=downloadFile;
+document.getElementById('openBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=e=>{ const f=e.target.files[0]; if(f) restoreFromFile(f); e.target.value=''; };
+
+/* ===== TEST DATA — remove this block before production ===== */
+function loadTestData(){
+  state.course={id:'TEST 100',credits:3,date:todayISO,by:'Test User'};
+  state.modules=10; modulesAck=false;
+  state.inputs={
+    read_pages:'96', read_lectures:'6',
+    mm_instructional:'180', mm_slides:'60', mm_supplementary:'60',
+    disc_initial:'5', disc_replies:'10',
+    graded_count:'4',
+    hw_assignments:'480', paper_reflective:'3', paper_analytical:'2', paper_synthesizing:'2', paper_culminating:'2',
+    pres_deliver:'10', pres_observe:'30',
+    assess_kcheck:'30', assess_quiz:'40', assess_quiz_n:'4', assess_mid:'30', assess_mid_n:'1', assess_exam:'60', assess_exam_n:'2',
+    other_direct:'30', other_direct_desc:'Synchronous office hours',
+    other_ooc:'60', other_ooc_desc:'Group project coordination',
+  };
+  state.gates={};
+  GROUPS.forEach(g=>g.items.forEach(it=>{ if(it.gate) state.gates[it.id]=true; }));
+  cur=0; render(); window.scrollTo(0,0); toast('Test data loaded — a sample 10-module course');
+}
+{ const b=document.getElementById('testBtn'); if(b) b.onclick=loadTestData; }
+/* ===== /TEST DATA ===== */
+
+/* ---- Tooltip controller: hover to preview, click to pin, × to close ---- */
+(function(){
+  const tip=document.getElementById('tip'); if(!tip) return;
+  const bodyEl=tip.querySelector('.tipbody');
+  let pinned=false, iconEl=null;
+  function place(){ if(!iconEl) return; const r=iconEl.getBoundingClientRect(); const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let left=r.left+r.width/2-tw/2; left=Math.max(12,Math.min(left,window.innerWidth-tw-12));
+    let top=r.bottom+8; if(top+th>window.innerHeight-12 && r.top-th-8>8) top=r.top-th-8;
+    tip.style.left=left+'px'; tip.style.top=top+'px'; }
+  function show(el,doPin){ const id=el.getAttribute('data-tip'); if(!TIPS[id]) return; iconEl=el; bodyEl.innerHTML=TIPS[id]; pinned=!!doPin; tip.classList.toggle('pinned',pinned); tip.hidden=false; place(); }
+  function hide(){ tip.hidden=true; pinned=false; iconEl=null; }
+  document.addEventListener('mouseover',e=>{ const b=e.target.closest&&e.target.closest('.info'); if(b && !pinned) show(b,false); });
+  document.addEventListener('mouseout',e=>{ const b=e.target.closest&&e.target.closest('.info'); if(b && !pinned) hide(); });
+  document.addEventListener('click',e=>{
+    const b=e.target.closest&&e.target.closest('.info');
+    if(b){ e.preventDefault(); e.stopPropagation(); (pinned&&iconEl===b)?hide():show(b,true); return; }
+    if(e.target.closest&&e.target.closest('.tipclose')){ hide(); return; }
+    if(pinned && !(e.target.closest&&e.target.closest('#tip'))) hide();
+  });
+  window.addEventListener('scroll',()=>{ if(!tip.hidden){ pinned?place():hide(); } },true);
+  window.addEventListener('resize',()=>{ if(!tip.hidden) place(); });
+})();
+
+render();
+</script>
+</body>
+</html>
